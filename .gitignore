@@ -28,10 +28,13 @@ android/app/debug/
 android/app/profile/
 android/app/release/
 
-# Android Gradle 插件生成的 Eclipse 兼容元数据（每次构建自动重建，无需入库）
+# Android Gradle 插件生成的 Eclipse 兼容元数据与编译输出
+# 每次构建/IDE 同步都会自动重建，不应入库，否则每轮构建都会污染工作区状态
 **/.classpath
 **/.project
 **/.settings/
+android/bin/
+rust_builder/android/bin/
 
 # Windows
 windows/flutter/ephemeral/
