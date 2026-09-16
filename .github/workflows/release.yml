@@ -187,13 +187,15 @@ jobs:
           set -e
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             VERSION="${GITHUB_REF_NAME#v}"
+            if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::发布标签必须形如 v主版本.次版本.修订号"
+              exit 1
+            fi
           else
-            # 手动触发时用占位版本号，避免产物看起来像正式版本
-            VERSION="0.0.0-dev"
-          fi
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-            echo "::error::发布标签必须形如 v主版本.次版本.修订号"
-            exit 1
+            # 手动触发时用 0.0.<运行序号>：既是纯数字（NSIS 的 VIProductVersion
+            # 要求 X.X.X.X 格式，带 -dev 之类后缀会直接编译失败），
+            # 又能区分每次构建，且一眼可辨不是正式版本
+            VERSION="0.0.${GITHUB_RUN_NUMBER}"
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
@@ -307,8 +309,15 @@ jobs:
           set -e
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             VERSION="${GITHUB_REF_NAME#v}"
+            if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::发布标签必须形如 v主版本.次版本.修订号"
+              exit 1
+            fi
           else
-            VERSION="0.0.0-dev"
+            # 手动触发时用 0.0.<运行序号>：NSIS 的 VIProductVersion 要求
+            # X.X.X.X 纯数字格式（脚本会拼成 ${VERSION}.0），
+            # 带 -dev 之类后缀会让 makensis 直接报错退出
+            VERSION="0.0.${GITHUB_RUN_NUMBER}"
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
