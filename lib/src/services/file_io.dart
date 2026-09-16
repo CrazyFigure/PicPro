@@ -28,6 +28,13 @@ const List<String> kSupportedExtensions = [
 /// 弹出文件选择器，支持多选。
 Future<List<XFile>> pickImageFiles() => impl.pickImageFiles();
 
+/// 按路径读回文件字节；无法读取（含 Web 端无路径概念）时返回 null。
+///
+/// 存在的意义是**降低常驻内存**：原生端导入后即可释放原始字节，
+/// 预览、处理、导出等需要时再按路径读回来。
+/// Web 端没有可访问的本地路径，恒为 null，调用方需自行保留字节。
+Future<Uint8List?> readFileBytes(String path) => impl.readFileBytes(path);
+
 /// 当前平台是否支持让用户指定输出目录。
 ///
 /// Web 端恒为 false，界面据此隐藏「输出目录」相关控件，
@@ -54,6 +61,11 @@ Future<String> saveOutputBytes({
       mimeType: mimeType,
       directory: directory,
     );
+
+/// 当前平台是否支持「释放原始字节后按路径读回来」。
+///
+/// Web 端为 false：没有可访问的本地路径，字节必须常驻。
+bool get canReloadFromDisk => impl.canReloadFromDisk;
 
 /// 是否运行在 Web 端。
 bool get isWebPlatform => impl.isWebPlatform;

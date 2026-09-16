@@ -169,6 +169,8 @@ pub fn process_image(
         compress: resolved.compress,
         output_format: resolved.output_format,
         decode: resolved.decode,
+        // 正式处理不做预览降采样：成品必须按全分辨率抠图
+        preview_max_long_side: None,
     };
     let out = run(&req)?;
     Ok(to_result_dto(out))
@@ -186,6 +188,8 @@ pub fn process_image_file(path: String, options: ProcessOptionsDto) -> Result<Pr
         compress: resolved.compress,
         output_format: resolved.output_format,
         decode: resolved.decode,
+        // 正式处理不做预览降采样：成品必须按全分辨率抠图
+        preview_max_long_side: None,
     };
     let out = run(&req)?;
     Ok(to_result_dto(out))
@@ -198,6 +202,11 @@ pub fn process_image_file(path: String, options: ProcessOptionsDto) -> Result<Pr
 /// 而不是另做一套近似渲染导致预览与成品不一致。
 ///
 /// `max_side` 建议取 600~1200：过小看不清换背景边缘，过大则失去快速预览的意义。
+///
+/// **性能**：预览在主线程同步执行，因此这里额外开启处理前降采样
+/// （`preview_max_long_side`），让抠图在小图上进行。否则 12MP 照片
+/// 单次预览要一秒以上，界面会被冻住，用户会误以为点击无效。
+/// 降采样后同步缩放以像素为单位的背景参数，观感不受影响。
 pub fn make_preview(
     bytes: Vec<u8>,
     filename: Option<String>,
@@ -205,11 +214,12 @@ pub fn make_preview(
     max_side: u32,
 ) -> Result<Vec<u8>> {
     let mut resolved = resolve_options(&options)?;
+    let side = max_side.max(64);
     // 预览固定输出 JPEG：体积小、解码快，且换背景后已无透明区
     resolved.compress = CompressOptions {
         // 保留裁剪与背景参数，仅替换尺寸与编码设定
         target_bytes: None,
-        max_long_side: Some(max_side.max(64)),
+        max_long_side: Some(side),
         target_width: None,
         target_height: None,
         allow_upscale: false,
@@ -226,6 +236,8 @@ pub fn make_preview(
         compress: resolved.compress,
         output_format: resolved.output_format,
         decode: resolved.decode,
+        // 与输出长边取同一个值：只重采样一次，且降采样后压缩步骤可直接跳过缩放
+        preview_max_long_side: Some(side),
     };
     let out = run(&req)?;
     Ok(out.bytes)
@@ -519,6 +531,41 @@ mod tests {
     }
 
     #[test]
+    fn 预览降采样后换背景效果仍然成立() {
+        // 预览会先降采样再抠图（避免全分辨率跑最贵的算法），
+        // 因此必须验证降采样没有破坏换背景的结果
+        let opts = ProcessOptionsDto {
+            background: Some(BackgroundDto {
+                color: ColorDto {
+                    red: 67,
+                    green: 142,
+                    blue: 219,
+                },
+                tolerance: None,
+                feather_px: None,
+                decontaminate: None,
+                edge_offset: None,
+                smooth_alpha: None,
+            }),
+            ..empty_options()
+        };
+        let preview = make_preview(png_bytes(1600, 1200), None, opts, 400).unwrap();
+        let decoded = decode_bytes(&preview, None, &DecodeOptions::default()).unwrap();
+        assert_eq!(decoded.image.width.max(decoded.image.height), 400);
+        let corners = decoded.image.first();
+        let tl = corners.get_pixel(2, 2).0;
+        // 预览强制 JPEG，有损编码会带来 ±2 的色差，因此按容差比较
+        let near = |a: u8, b: u8| (a as i32 - b as i32).abs() <= 3;
+        assert!(
+            near(tl[0], 67) && near(tl[1], 142) && near(tl[2], 219),
+            "预览四角应接近目标底色，实际 {tl:?}"
+        );
+        // 中央主体仍应保留深色
+        let center = corners.get_pixel(200, 150).0;
+        assert!(center[0] < 60, "主体不应被挖空，实际 {center:?}");
+    }
+
+    #[test]
     fn 未知输出格式报错() {
         let opts = ProcessOptionsDto {
             output_format: Some("heic".into()),
@@ -545,3 +592,4 @@ mod tests {
         }
     }
 }
+

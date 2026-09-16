@@ -19,6 +19,7 @@ use crate::core::encode::encode;
 use crate::core::error::{PicProError, Result};
 use crate::core::format::ImageFormat;
 use crate::core::presets::find_preset;
+use crate::core::resize::ImageResizer;
 use crate::core::types::RasterImage;
 
 /// 裁剪参数。
@@ -61,6 +62,18 @@ pub struct PipelineRequest {
     /// 输出格式。None 表示按源格式推断。
     pub output_format: Option<ImageFormat>,
     pub decode: DecodeOptions,
+    /// 预览专用的**处理前降采样上限**（长边像素）。None 表示不降采样。
+    ///
+    /// 换背景是整个流水线里最贵的一步，耗时与像素数近似成正比。
+    /// 若等最后由压缩步骤缩小，等于先用全分辨率把最贵的算法跑了一遍：
+    /// 实测 12MP 照片单次预览要 1.3 秒以上，而预览是在主线程同步执行的，
+    /// 期间界面完全无法响应——用户会以为「点了没反应」。
+    /// 因此在裁剪之后、换背景之前先降到接近预览输出尺寸，
+    /// 并同步缩放以像素为单位的背景参数（见 `BackgroundOptions::scaled_to`），
+    /// 既快又不改变观感。
+    ///
+    /// 正式处理必须保持 None：成品要按全分辨率抠图。
+    pub preview_max_long_side: Option<u32>,
 }
 
 impl Default for PipelineRequest {
@@ -74,6 +87,7 @@ impl Default for PipelineRequest {
             compress: CompressOptions::default(),
             output_format: None,
             decode: DecodeOptions::default(),
+            preview_max_long_side: None,
         }
     }
 }
@@ -153,9 +167,23 @@ pub fn run(req: &PipelineRequest) -> Result<PipelineOutput> {
     // ---------- 步骤 2：裁剪 ----------
     apply_crop(&mut img, &req.crop, &mut notes)?;
 
+    // ---------- 步骤 2.5：预览降采样（仅预览路径会设置）----------
+    // 放在裁剪之后：归一化裁剪框与图像尺寸无关，先裁再降采样可以少重采样一次；
+    // 放在换背景之前：抠图是最贵的一步，必须让它在小图上跑。
+    let mut background_opts = req.background.clone();
+    if let Some(limit) = req.preview_max_long_side {
+        let long = img.width.max(img.height);
+        if limit > 0 && long > limit {
+            let scale = limit as f32 / long as f32;
+            img = ImageResizer::new().scale(&img, scale)?;
+            // 边缘参数以像素为单位，必须同步缩放，否则预览边缘与成品不一致
+            background_opts = background_opts.map(|b| b.scaled_to(scale));
+        }
+    }
+
     // ---------- 步骤 3：换背景 ----------
     let mut bg_report = None;
-    if let Some(bg_opts) = &req.background {
+    if let Some(bg_opts) = &background_opts {
         // 动画 GIF 换背景本身不被产品需求覆盖，但内核支持逐帧处理；
         // 这里对多帧输入给出提示，避免用户误以为只处理了首帧。
         if img.frame_count() > 1 {

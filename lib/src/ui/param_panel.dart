@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+
+import '../rust/api/dto.dart';
 
 import '../app.dart';
 import '../settings.dart';
 import '../state/app_state.dart';
+import 'widgets.dart';
 
 /// 参数面板：裁剪、换背景、输出格式与体积控制。
 class ParamPanel extends StatelessWidget {
@@ -13,29 +15,22 @@ class ParamPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Panel(
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 14),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+      elevated: true,
       child: ListView(
         padding: EdgeInsets.zero,
         children: const [
           _CropSection(),
-          _Divider(),
+          SectionDivider(),
           _BackgroundSection(),
-          _Divider(),
+          SectionDivider(),
           _FormatSection(),
-          _Divider(),
+          SectionDivider(),
           _SizeSection(),
         ],
       ),
     );
   }
-}
-
-class _Divider extends StatelessWidget {
-  const _Divider();
-
-  @override
-  Widget build(BuildContext context) =>
-      const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1));
 }
 
 // ------------------------------------------------------------------ 裁剪
@@ -52,78 +47,136 @@ class _CropSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SectionHeader(
+        SectionHeader(
           title: '证件照规格',
-          trailing: _Segmented(
+          trailing: AppSegmented(
             options: const ['关', '预设', '自定义'],
             index: s.cropMode.index,
-            onChanged: (i) {
-              s.cropMode = CropMode.values[i];
-              state.settingsChanged();
-            },
+            onChanged: (i) => state.cropModeChanged(CropMode.values[i]),
           ),
         ),
         if (s.cropMode == CropMode.preset) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           _PresetPicker(
             presets: state.presets,
             value: s.presetId,
             onChanged: state.selectPreset,
           ),
           if (s.presetId != null) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             _PresetInfo(presetId: s.presetId!, state: state),
           ],
-          const SizedBox(height: 2),
-          LabeledRow(
-            label: '纵向位置',
-            child: Slider(
-              value: s.verticalAnchor,
-              min: 0,
-              max: 0.4,
-              divisions: 20,
-              label: s.verticalAnchor.toStringAsFixed(2),
-              onChanged: (v) {
-                s.verticalAnchor = v;
-                state.settingsChanged();
-              },
-            ),
-          ),
         ],
         if (s.cropMode == CropMode.custom) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Row(
             children: [
               Expanded(
-                child: _NumberField(
-                  label: '宽(px)',
+                child: AppNumberField(
                   value: s.customWidth,
-                  onChanged: (v) {
-                    s.customWidth = v;
-                    state.settingsChanged();
-                  },
+                  hint: '宽 px',
+                  onChanged: (v) => state.setCustomSize(width: v),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: _NumberField(
-                  label: '高(px)',
+                child: AppNumberField(
                   value: s.customHeight,
-                  onChanged: (v) {
-                    s.customHeight = v;
-                    state.settingsChanged();
-                  },
+                  hint: '高 px',
+                  onChanged: (v) => state.setCustomSize(height: v),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
+        ],
+        if (s.cropMode != CropMode.none) ...[
+          const SizedBox(height: 10),
+          _CropFramingHint(state: state),
+          const SizedBox(height: 6),
           Text(
             '先按规格像素裁剪，再压体积——顺序不可颠倒',
             style: theme.textTheme.bodySmall,
           ),
         ],
       ],
+    );
+  }
+}
+
+/// 取景操作提示。
+///
+/// 这段文案不是装饰：取景框只在预览的「构图」页出现，不提示的话
+/// 用户根本不知道裁剪范围还能手动调整。
+class _CropFramingHint extends StatelessWidget {
+  const _CropFramingHint({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final box = state.selectedJob?.cropBox;
+    final info = state.selectedJob?.info;
+    final sourceW = box == null || info == null ? null : (box.width * info.width).round();
+    final sourceH = box == null || info == null ? null : (box.height * info.height).round();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
+      decoration: BoxDecoration(
+        color: AppTokens.primary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(AppTokens.radiusSmall),
+        border: Border.all(color: AppTokens.primary.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.crop_free, size: 14, color: AppTokens.primary),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  '在预览的「构图」页拖动取景框',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppTokens.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '拖动框内平移，拖角点等比缩放，滚轮微调；比例已锁定规格，不会变形。',
+            style: TextStyle(fontSize: 11.5, color: AppTokens.textSecondary, height: 1.4),
+          ),
+          if (sourceW != null && sourceH != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              '当前取景 $sourceW×$sourceH px',
+              style: const TextStyle(
+                fontSize: 11.5,
+                color: AppTokens.textSecondary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+          const SizedBox(height: 2),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: state.resetCropBox,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              icon: const Icon(Icons.restart_alt, size: 14),
+              label: const Text('恢复默认取景', style: TextStyle(fontSize: 11.5)),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -136,35 +189,38 @@ class _PresetPicker extends StatelessWidget {
     required this.onChanged,
   });
 
-  final List<dynamic> presets;
+  final List<PresetDto> presets;
   final String? value;
   final ValueChanged<String?> onChanged;
 
   @override
   Widget build(BuildContext context) {
     // 按分类归组，保持内核返回的顺序
-    final groups = <String, List<dynamic>>{};
+    final groups = <String, List<PresetDto>>{};
     for (final p in presets) {
-      groups.putIfAbsent(p.categoryName as String, () => []).add(p);
+      groups.putIfAbsent(p.categoryName, () => []).add(p);
     }
 
     return DropdownButtonFormField<String>(
+      // 用取值做 key：规格被外部改回/重置时强制重建，
+      // 否则表单内部状态会停留在旧值，界面显示的规格与实际裁剪不一致
+      key: ValueKey(value),
       initialValue: value,
       isExpanded: true,
       hint: const Text('选择规格', style: TextStyle(fontSize: 13)),
       style: const TextStyle(fontSize: 13, color: AppTokens.textPrimary),
+      borderRadius: BorderRadius.circular(AppTokens.radiusSmall),
       items: [
-        for (final entry in groups.entries) ...[
+        for (final entry in groups.entries)
           for (final p in entry.value)
             DropdownMenuItem<String>(
-              value: p.id as String,
+              value: p.id,
               child: Text(
                 '${entry.key} · ${p.name}  ${p.widthPx}×${p.heightPx}',
                 style: const TextStyle(fontSize: 13),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-        ],
       ],
       onChanged: onChanged,
     );
@@ -181,48 +237,57 @@ class _PresetInfo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final p = state.presets.firstWhere(
+    final presets = state.presets;
+    if (presets.isEmpty) return const SizedBox.shrink();
+    final p = presets.firstWhere(
       (e) => e.id == presetId,
-      orElse: () => state.presets.first,
+      orElse: () => presets.first,
     );
     final mm = p.widthMm > 0 ? '${p.widthMm}×${p.heightMm}mm · ' : '';
     return Container(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(9),
       decoration: BoxDecoration(
-        color: AppTokens.canvas,
+        color: AppTokens.surfaceAlt,
         borderRadius: BorderRadius.circular(AppTokens.radiusSmall),
+        border: Border.all(color: AppTokens.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             '$mm${p.widthPx}×${p.heightPx}px · ${p.dpi}dpi',
-            style: theme.textTheme.bodySmall?.copyWith(color: AppTokens.textPrimary),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: AppTokens.textPrimary,
+              fontWeight: FontWeight.w500,
+            ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 3),
           Text(p.note, style: theme.textTheme.bodySmall),
-          const SizedBox(height: 4),
-          Wrap(
-            spacing: 4,
-            children: [
-              for (var i = 0; i < p.backgroundNames.length; i++)
-                _Swatch(
-                  color: Color.fromARGB(
-                    255,
-                    p.backgroundColors[i].red,
-                    p.backgroundColors[i].green,
-                    p.backgroundColors[i].blue,
+          if (p.backgroundNames.isNotEmpty) ...[
+            const SizedBox(height: 7),
+            Wrap(
+              spacing: 5,
+              runSpacing: 5,
+              children: [
+                for (var i = 0; i < p.backgroundNames.length; i++)
+                  ColorSwatchButton(
+                    color: Color.fromARGB(
+                      255,
+                      p.backgroundColors[i].red,
+                      p.backgroundColors[i].green,
+                      p.backgroundColors[i].blue,
+                    ),
+                    label: p.backgroundNames[i],
+                    selected: false,
+                    onTap: () => state.selectBackgroundColor(
+                      p.backgroundColors[i].red,
+                      p.backgroundColors[i].green,
+                      p.backgroundColors[i].blue,
+                    ),
                   ),
-                  label: p.backgroundNames[i],
-                  selected: false,
-                  onTap: () => state.selectBackgroundColor(
-                    p.backgroundColors[i].red,
-                    p.backgroundColors[i].green,
-                    p.backgroundColors[i].blue,
-                  ),
-                ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -238,12 +303,11 @@ class _BackgroundSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final s = state.settings;
-    final theme = Theme.of(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SectionHeader(
+        SectionHeader(
           title: '背景底色',
           trailing: Switch(
             value: s.backgroundEnabled,
@@ -255,15 +319,15 @@ class _BackgroundSection extends StatelessWidget {
           ),
         ),
         if (s.backgroundEnabled) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           FieldGroup(
             children: [
               Wrap(
-                spacing: 4,
-                runSpacing: 4,
+                spacing: 5,
+                runSpacing: 5,
                 children: [
                   for (final b in state.backgrounds)
-                    _Swatch(
+                    ColorSwatchButton(
                       color: Color.fromARGB(255, b.color.red, b.color.green, b.color.blue),
                       label: b.name,
                       selected: s.backgroundColor.toARGB32() ==
@@ -277,49 +341,68 @@ class _BackgroundSection extends StatelessWidget {
                     ),
                 ],
               ),
-              const SizedBox(height: 8),
-              LabeledRow(label: '自定义', child: _HexColorField(state: state)),
-              LabeledRow(
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  SizedBox(
+                    width: 68,
+                    child: Text('自定义',
+                        style: Theme.of(context).textTheme.bodySmall),
+                  ),
+                  Expanded(
+                    child: HexColorField(
+                      value: s.backgroundColor,
+                      onChanged: (c) => state.selectBackgroundColor(
+                        (c.r * 255).round(),
+                        (c.g * 255).round(),
+                        (c.b * 255).round(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              LabeledSlider(
                 label: '判定阈值',
-                child: Slider(
-                  value: s.tolerance,
-                  min: 0.03,
-                  max: 0.3,
-                  divisions: 27,
-                  label: s.tolerance.toStringAsFixed(2),
-                  onChanged: (v) {
-                    s.tolerance = v;
-                    state.settingsChanged();
-                  },
-                ),
+                tooltip: '越大越宽松：更多"接近背景色"的边缘像素会被判成背景，'
+                    '轮廓整体向内收；背景偏亮/偏暗时适当提高',
+                value: s.tolerance,
+                min: 0.03,
+                max: 0.30,
+                divisions: 27,
+                valueLabel: s.tolerance.toStringAsFixed(2),
+                onChanged: (v) {
+                  s.tolerance = v;
+                  state.settingsChanged();
+                },
               ),
-              LabeledRow(
+              LabeledSlider(
                 label: '边缘羽化',
-                child: Slider(
-                  value: s.featherPx.toDouble(),
-                  min: 0,
-                  max: 8,
-                  divisions: 8,
-                  label: '${s.featherPx}px',
-                  onChanged: (v) {
-                    s.featherPx = v.round();
-                    state.settingsChanged();
-                  },
-                ),
+                tooltip: '软边过渡带的宽度（像素）。越大发丝越柔和，'
+                    '越小边缘越利落；与"判定阈值"无关，只影响柔化范围',
+                value: s.featherPx.toDouble(),
+                min: 0,
+                max: 8,
+                divisions: 8,
+                valueLabel: '${s.featherPx}px',
+                onChanged: (v) {
+                  s.featherPx = v.round();
+                  state.settingsChanged();
+                },
               ),
-              LabeledRow(
+              LabeledSlider(
                 label: '边缘收放',
-                child: Slider(
-                  value: s.edgeOffset,
-                  min: -0.5,
-                  max: 0.5,
-                  divisions: 20,
-                  label: s.edgeOffset.toStringAsFixed(2),
-                  onChanged: (v) {
-                    s.edgeOffset = v;
-                    state.settingsChanged();
-                  },
-                ),
+                tooltip: '几何平移前景边界：正值收缩前景（去背景残留更彻底），'
+                    '负值扩张前景（保住更多发丝）',
+                value: s.edgeOffset,
+                min: -1,
+                max: 1,
+                divisions: 20,
+                valueLabel: _edgeOffsetLabel(s.edgeOffset),
+                onChanged: (v) {
+                  s.edgeOffset = v;
+                  state.settingsChanged();
+                },
               ),
               ToggleRow(
                 label: '消除白边',
@@ -330,120 +413,23 @@ class _BackgroundSection extends StatelessWidget {
                   state.settingsChanged();
                 },
               ),
-              Text(
-                '适用于纯色或均匀背景。背景有强渐变或复杂纹理时效果有限。GIF 动图不支持换背景。',
-                style: theme.textTheme.bodySmall,
-              ),
             ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '适用于纯色或均匀背景。背景有强渐变或复杂纹理时效果有限。GIF 动图不支持换背景。',
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
       ],
     );
   }
-}
 
-/// 十六进制颜色输入。
-class _HexColorField extends StatefulWidget {
-  const _HexColorField({required this.state});
-
-  final AppState state;
-
-  @override
-  State<_HexColorField> createState() => _HexColorFieldState();
-}
-
-class _HexColorFieldState extends State<_HexColorField> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: _hex(widget.state.settings.backgroundColor));
-  }
-
-  static String _hex(Color c) =>
-      '#${((c.r * 255).round() << 16 | (c.g * 255).round() << 8 | (c.b * 255).round()).toRadixString(16).padLeft(6, '0')}';
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: _controller,
-      style: const TextStyle(fontSize: 13),
-      inputFormatters: [
-        FilteringTextInputFormatter.allow(RegExp(r'[0-9a-fA-F#]')),
-        LengthLimitingTextInputFormatter(7),
-      ],
-      decoration: const InputDecoration(hintText: '#438EDB'),
-      onSubmitted: (v) {
-        final hex = v.replaceAll('#', '');
-        if (hex.length != 6) return;
-        final value = int.tryParse(hex, radix: 16);
-        if (value == null) return;
-        widget.state.selectBackgroundColor(
-          (value >> 16) & 0xFF,
-          (value >> 8) & 0xFF,
-          value & 0xFF,
-        );
-      },
-    );
-  }
-}
-
-/// 底色小圆点。
-class _Swatch extends StatelessWidget {
-  const _Swatch({
-    required this.color,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final Color color;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: label,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppTokens.radiusSmall),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppTokens.radiusSmall),
-            border: Border.all(
-              color: selected ? AppTokens.primary : AppTokens.border,
-              width: selected ? 1.6 : 1,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 13,
-                height: 13,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(3),
-                  border: Border.all(color: AppTokens.border),
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text(label, style: const TextStyle(fontSize: 11)),
-            ],
-          ),
-        ),
-      ),
-    );
+  /// 把 -1~1 的无量纲取值翻译成用户能理解的方向词。
+  static String _edgeOffsetLabel(double v) {
+    if (v.abs() < 0.025) return '0 不变';
+    final dir = v > 0 ? '收缩' : '扩张';
+    return '${v.abs().toStringAsFixed(2)} $dir';
   }
 }
 
@@ -459,12 +445,13 @@ class _FormatSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SectionHeader(title: '输出格式'),
-        const SizedBox(height: 8),
+        const SectionHeader(title: '输出格式'),
+        const SizedBox(height: 10),
         DropdownButtonFormField<String?>(
           initialValue: s.outputFormat,
           isExpanded: true,
           style: const TextStyle(fontSize: 13, color: AppTokens.textPrimary),
+          borderRadius: BorderRadius.circular(AppTokens.radiusSmall),
           items: [
             const DropdownMenuItem<String?>(
               value: null,
@@ -481,7 +468,7 @@ class _FormatSection extends StatelessWidget {
             state.settingsChanged();
           },
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
           'SVG 只能作为输入：位图无法反向转成矢量图',
           style: Theme.of(context).textTheme.bodySmall,
@@ -505,9 +492,9 @@ class _SizeSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SectionHeader(
+        SectionHeader(
           title: '体积与尺寸',
-          trailing: _Segmented(
+          trailing: AppSegmented(
             options: const ['关', '体积', '长边'],
             index: s.sizeLimitMode.index,
             onChanged: (i) {
@@ -516,49 +503,65 @@ class _SizeSection extends StatelessWidget {
             },
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         if (s.sizeLimitMode == SizeLimitMode.targetSize) ...[
-          LabeledRow(
-            label: '上限(KB)',
-            child: _NumberField(
-              value: s.targetKb,
-              onChanged: (v) {
-                s.targetKb = v;
-                state.settingsChanged();
-              },
-            ),
+          Row(
+            children: [
+              SizedBox(
+                width: 68,
+                child: Text('上限 KB', style: theme.textTheme.bodySmall),
+              ),
+              Expanded(
+                child: AppNumberField(
+                  value: s.targetKb,
+                  onChanged: (v) {
+                    s.targetKb = v;
+                    state.settingsChanged();
+                  },
+                ),
+              ),
+            ],
           ),
-          LabeledRow(
+          const SizedBox(height: 4),
+          LabeledSlider(
             label: '质量下限',
-            child: Slider(
-              value: s.qualityFloor.toDouble(),
-              min: 60,
-              max: 95,
-              divisions: 35,
-              label: '${s.qualityFloor}',
-              onChanged: (v) {
-                s.qualityFloor = v.round();
-                state.settingsChanged();
-              },
-            ),
+            tooltip: '体积压不下去时的质量底线；优先保留分辨率，'
+                '只有体积实在太紧才继续降分辨率',
+            value: s.qualityFloor.toDouble(),
+            min: 60,
+            max: 95,
+            divisions: 35,
+            valueLabel: '${s.qualityFloor}',
+            onChanged: (v) {
+              s.qualityFloor = v.round();
+              state.settingsChanged();
+            },
           ),
           Text(
             '优先保留分辨率，质量不低于下限；体积实在太紧时才继续降分辨率',
             style: theme.textTheme.bodySmall,
           ),
         ],
-        if (s.sizeLimitMode == SizeLimitMode.maxLongSide)
-          LabeledRow(
-            label: '长边(px)',
-            child: _NumberField(
-              value: s.maxLongSide,
-              onChanged: (v) {
-                s.maxLongSide = v;
-                state.settingsChanged();
-              },
-            ),
+        if (s.sizeLimitMode == SizeLimitMode.maxLongSide) ...[
+          Row(
+            children: [
+              SizedBox(
+                width: 68,
+                child: Text('长边 px', style: theme.textTheme.bodySmall),
+              ),
+              Expanded(
+                child: AppNumberField(
+                  value: s.maxLongSide,
+                  onChanged: (v) {
+                    s.maxLongSide = v;
+                    state.settingsChanged();
+                  },
+                ),
+              ),
+            ],
           ),
-        const SizedBox(height: 4),
+        ],
+        const SizedBox(height: 6),
         ToggleRow(
           label: 'JPEG 无色度抽样',
           detail: '即 4:4:4，证件照发丝与文字边缘更干净，体积略增',
@@ -569,148 +572,6 @@ class _SizeSection extends StatelessWidget {
           },
         ),
       ],
-    );
-  }
-}
-
-// ------------------------------------------------------------------ 通用
-
-/// 区块头：标题在左，操作在右。
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, this.trailing});
-
-  final String title;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Text(title, style: Theme.of(context).textTheme.titleMedium),
-        const Spacer(),
-        ?trailing,
-      ],
-    );
-  }
-}
-
-/// 数字输入框，带范围限制。
-class _NumberField extends StatefulWidget {
-  const _NumberField({
-    required this.value,
-    required this.onChanged,
-    this.label,
-  });
-
-  final int value;
-  final ValueChanged<int> onChanged;
-  final String? label;
-
-  @override
-  State<_NumberField> createState() => _NumberFieldState();
-}
-
-class _NumberFieldState extends State<_NumberField> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.value.toString());
-  }
-
-  @override
-  void didUpdateWidget(_NumberField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // 外部（如切换预设）改变了取值时同步到输入框，
-    // 但正在输入的相同数值不打断光标位置
-    if (widget.value.toString() != _controller.text &&
-        int.tryParse(_controller.text) != widget.value) {
-      _controller.text = widget.value.toString();
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: _controller,
-      keyboardType: TextInputType.number,
-      style: const TextStyle(fontSize: 13),
-      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-      decoration: InputDecoration(hintText: widget.label),
-      onSubmitted: (v) {
-        final n = int.tryParse(v);
-        // 忽略空值与 0：0 尺寸会让内核直接报错
-        if (n != null && n > 0) widget.onChanged(n);
-      },
-    );
-  }
-}
-
-/// 紧凑分段控件（与预览面板同款，避免重复实现两套观感）。
-class _Segmented extends StatelessWidget {
-  const _Segmented({
-    required this.options,
-    required this.index,
-    required this.onChanged,
-  });
-
-  final List<String> options;
-  final int index;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: AppTokens.canvas,
-        borderRadius: BorderRadius.circular(AppTokens.radiusSmall),
-        border: Border.all(color: AppTokens.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 0; i < options.length; i++)
-            GestureDetector(
-              onTap: () => onChanged(i),
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 120),
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: i == index ? AppTokens.surface : Colors.transparent,
-                    borderRadius: BorderRadius.circular(5),
-                    boxShadow: i == index
-                        ? const [
-                            BoxShadow(
-                              color: Color(0x14000000),
-                              blurRadius: 3,
-                              offset: Offset(0, 1),
-                            )
-                          ]
-                        : null,
-                  ),
-                  child: Text(
-                    options[i],
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: i == index ? AppTokens.textPrimary : AppTokens.textSecondary,
-                      fontWeight: i == index ? FontWeight.w600 : FontWeight.w400,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
     );
   }
 }

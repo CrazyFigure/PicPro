@@ -53,4 +53,10 @@ Future<String> saveOutputBytes({
   return filename;
 }
 
+/// Web 端没有可访问的本地路径，无法按路径读回。
+Future<Uint8List?> readFileBytes(String path) async => null;
+
+/// Web 端无法从磁盘读回，字节必须常驻内存。
+bool get canReloadFromDisk => false;
+
 bool get isWebPlatform => true;

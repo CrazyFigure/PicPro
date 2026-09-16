@@ -64,4 +64,22 @@ Future<String> saveOutputBytes({
   return target.path;
 }
 
+/// 按路径读回文件字节；读取失败返回 null 而不是抛异常。
+///
+/// 不抛异常是刻意的：调用方（预览 / 处理）会在拿不到字节时给出
+/// 明确文案，比起让一个底层 IO 异常穿透到界面更可控。
+Future<Uint8List?> readFileBytes(String path) async {
+  try {
+    final f = File(path);
+    if (!await f.exists()) return null;
+    return await f.readAsBytes();
+  } catch (_) {
+    // 文件被删除、移动，或 Android 上路径不再可用（SAF 临时副本被清理）
+    return null;
+  }
+}
+
+/// 原生端可以从磁盘读回文件，因此导入后允许释放原始字节。
+bool get canReloadFromDisk => true;
+
 bool get isWebPlatform => false;

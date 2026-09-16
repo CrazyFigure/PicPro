@@ -7,6 +7,7 @@ import '../state/app_state.dart';
 import 'job_list.dart';
 import 'param_panel.dart';
 import 'preview_pane.dart';
+import 'widgets.dart';
 
 /// 主工作台。
 ///
@@ -31,39 +32,57 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: 16,
+        titleSpacing: 14,
         title: Row(
           children: [
+            const _BrandMark(),
+            const SizedBox(width: 10),
             const Text('PicPro', style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(width: 10),
-            Text(
-              '批量压缩 · 换背景 · 转格式 · 证件照裁剪',
-              style: Theme.of(context).textTheme.bodySmall,
+            Flexible(
+              child: Text(
+                '批量压缩 · 换背景 · 转格式 · 证件照裁剪',
+                style: Theme.of(context).textTheme.bodySmall,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
         actions: [
           if (canChooseOutputDirectory)
-            TextButton.icon(
-              onPressed: state.chooseOutputDir,
-              icon: const Icon(Icons.folder_outlined, size: 17),
-              label: Text(
-                state.outputDirectory == null ? '输出目录' : '已选目录',
-                style: const TextStyle(fontSize: 13),
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: OutlinedButton.icon(
+                onPressed: state.chooseOutputDir,
+                icon: const Icon(Icons.folder_outlined, size: 16),
+                label: Text(
+                  state.outputDirectory == null ? '输出目录' : '已选目录',
+                  style: const TextStyle(fontSize: 12.5),
+                ),
               ),
             ),
-          const SizedBox(width: 6),
-          FilledButton.tonalIcon(
-            onPressed: state.processing ? null : state.importFiles,
-            icon: const Icon(Icons.add_photo_alternate_outlined, size: 17),
-            label: const Text('导入图片', style: TextStyle(fontSize: 13)),
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: FilledButton.tonalIcon(
+              style: appTonalButtonStyle(),
+              onPressed: state.processing ? null : state.importFiles,
+              icon: const Icon(Icons.add_photo_alternate_outlined, size: 16),
+              label: const Text('导入图片', style: TextStyle(fontSize: 12.5)),
+            ),
           ),
-          const SizedBox(width: 10),
         ],
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1),
+        ),
       ),
       body: Column(
         children: [
-          if (state.lastError != null) _ErrorBar(text: state.lastError!),
+          if (state.lastError != null)
+            _ErrorBar(
+              text: state.lastError!,
+              onDismiss: state.clearLastError,
+            ),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -72,15 +91,16 @@ class _HomePageState extends State<HomePage> {
               },
             ),
           ),
-          _ActionBar(),
-        ],      ),
+          const _ActionBar(),
+        ],
+      ),
     );
   }
 
   /// 宽屏三栏布局。
   Widget _wideLayout() {
     return const Padding(
-      padding: EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: EdgeInsets.fromLTRB(12, 10, 12, 0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -88,7 +108,7 @@ class _HomePageState extends State<HomePage> {
           SizedBox(width: 12),
           Expanded(flex: 42, child: PreviewPane()),
           SizedBox(width: 12),
-          SizedBox(width: 330, child: ParamPanel()),
+          SizedBox(width: 336, child: ParamPanel()),
         ],
       ),
     );
@@ -97,23 +117,22 @@ class _HomePageState extends State<HomePage> {
   /// 窄屏：页签切换，避免三栏互相挤压。
   Widget _narrowLayout() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 6, 10, 0),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
       child: Column(
         children: [
-          SizedBox(
-            width: double.infinity,
-            child: SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 0, label: Text('图片', style: TextStyle(fontSize: 13))),
-                ButtonSegment(value: 1, label: Text('预览', style: TextStyle(fontSize: 13))),
-                ButtonSegment(value: 2, label: Text('参数', style: TextStyle(fontSize: 13))),
-              ],
-              selected: {_narrowTab},
-              showSelectedIcon: false,
-              onSelectionChanged: (v) => setState(() => _narrowTab = v.first),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: AppSegmented(
+                  options: const ['图片', '预览', '参数'],
+                  index: _narrowTab,
+                  compact: false,
+                  onChanged: (v) => setState(() => _narrowTab = v),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Expanded(
             child: switch (_narrowTab) {
               0 => const JobList(),
@@ -127,18 +146,49 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-/// 错误条：展示最近一次失败原因。
+/// 应用标识：一个渐变小方块，替代默认的纯文字标题。
+class _BrandMark extends StatelessWidget {
+  const _BrandMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppTokens.primaryHover, AppTokens.primaryPressed],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: const Icon(Icons.auto_awesome_mosaic, size: 14, color: Colors.white),
+    );
+  }
+}
+
+/// 错误条：展示最近一次失败原因，并提供关闭入口。
+///
+/// 错误若不显示，用户只会看到「点了没反应」；若不能关闭，
+/// 一次偶发失败会长期占据界面顶部。两者都必须处理好。
 class _ErrorBar extends StatelessWidget {
-  const _ErrorBar({required this.text});
+  const _ErrorBar({required this.text, required this.onDismiss});
 
   final String text;
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      color: AppTokens.danger.withValues(alpha: 0.08),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTokens.danger.withValues(alpha: 0.07),
+        border: Border(
+          bottom: BorderSide(color: AppTokens.danger.withValues(alpha: 0.2)),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
       child: Row(
         children: [
           const Icon(Icons.error_outline, size: 16, color: AppTokens.danger),
@@ -146,10 +196,17 @@ class _ErrorBar extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(fontSize: 12.5, color: AppTokens.danger),
+              style: const TextStyle(fontSize: 12.5, color: AppTokens.danger, height: 1.4),
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),
+          ),
+          IconButton(
+            onPressed: onDismiss,
+            iconSize: 15,
+            tooltip: '关闭提示',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.close),
           ),
         ],
       ),
@@ -172,50 +229,109 @@ class _ActionBar extends StatelessWidget {
         color: AppTokens.surface,
         border: Border(top: BorderSide(color: AppTokens.border)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       child: Row(
         children: [
-          if (state.processing) ...[
-            SizedBox(
-              width: 120,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: LinearProgressIndicator(
-                  value: state.progress == 0 ? null : state.progress,
-                  minHeight: 5,
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              '${(state.progress * 100).toStringAsFixed(0)}%',
-              style: theme.textTheme.bodySmall,
-            ),
-          ] else
-            Expanded(
-              child: Text(
-                state.statusText.isEmpty
-                    ? (state.hasJobs ? '待处理 ${state.jobs.length} 张' : '先导入图片')
-                    : state.statusText,
-                style: theme.textTheme.bodySmall,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          if (state.processing) const Spacer(),
+          Expanded(child: _StatusArea(state: state, theme: theme)),
           const SizedBox(width: 12),
-          TextButton(
+          OutlinedButton.icon(
             onPressed: (!state.hasJobs || state.processing || done == 0)
                 ? null
                 : state.exportAll,
-            child: Text(done == 0 ? '导出' : '导出 $done 张'),
+            icon: const Icon(Icons.download_outlined, size: 16),
+            label: Text(
+              done == 0 ? '导出' : '导出 $done 张',
+              style: const TextStyle(fontSize: 12.5),
+            ),
           ),
-          const SizedBox(width: 6),
-          FilledButton(
-            onPressed: (!state.hasJobs || state.processing) ? null : state.processAll,
-            child: const Text('开始处理'),
+          const SizedBox(width: 8),
+          BusyFilledButton(
+            label: '开始处理',
+            busyLabel: state.progressLabel,
+            busy: state.processing,
+            icon: Icons.play_arrow_rounded,
+            onPressed: state.canProcess ? state.processAll : null,
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 左侧状态区：处理中显示进度条，否则显示状态文案。
+class _StatusArea extends StatelessWidget {
+  const _StatusArea({required this.state, required this.theme});
+
+  final AppState state;
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    if (state.processing) {
+      return Row(
+        children: [
+          SizedBox(
+            width: 140,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                // 进度为 0 时用不确定态，避免长时间停在 0% 看起来像卡死
+                value: state.progress == 0 ? null : state.progress,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '${(state.progress * 100).toStringAsFixed(0)}%',
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      );
+    }
+
+    final text = state.statusText.isEmpty
+        ? (state.hasJobs ? '待处理 ${state.jobs.length} 张' : '先导入图片')
+        : state.statusText;
+
+    return Row(
+      children: [
+        _StatusDot(text: text, hasJobs: state.hasJobs, done: state.completedJobs.length),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            text,
+            style: theme.textTheme.bodySmall,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 状态圆点：把「就绪 / 待处理 / 已完成」这类状态用颜色先表达出来。
+class _StatusDot extends StatelessWidget {
+  const _StatusDot({required this.text, required this.hasJobs, required this.done});
+
+  final String text;
+  final bool hasJobs;
+  final int done;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = !hasJobs
+        ? AppTokens.textTertiary
+        : text.contains('失败')
+            ? AppTokens.danger
+            : done > 0
+                ? AppTokens.success
+                : AppTokens.warning;
+    return Container(
+      width: 7,
+      height: 7,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }

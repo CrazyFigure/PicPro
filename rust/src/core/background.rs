@@ -8,12 +8,16 @@
 //! 2. **连通域抠图**：从图像边界向内做洪水填充，而不是单纯按颜色阈值判断。
 //!    这是本算法的关键：白衬衫与白背景颜色几乎相同，仅靠颜色会把衬衫挖空；
 //!    而衬衫被深色西装包围、不与画面边界连通，因此不会被填充到。
-//! 3. **软边过渡**：对紧邻背景的区域按颜色距离给出 0~1 的 alpha，
-//!    而不是硬边，让发丝有自然的半透明过渡。
-//! 4. **白底去污染**：半透明像素里混有原背景色，直接合成会在新底色上留下
+//! 3. **边缘收放**：对背景掩膜做**几何**膨胀/腐蚀，把前景边界整体平移若干像素。
+//!    正值膨胀背景即收缩前景（可去掉一圈背景残留与白边），负值反之。
+//! 4. **软边过渡**：对紧邻背景边界的一圈像素按颜色距离给出 0~1 的 alpha，
+//!    而不是硬边，让发丝有自然的半透明过渡。过渡带的**几何宽度**由
+//!    `feather_px` 决定，带内 alpha 的**颜色判据**由 `tolerance` 决定——
+//!    两者解耦，因此界面上两个参数各自都能产生明确、可预期的效果。
+//! 5. **白底去污染**：半透明像素里混有原背景色，直接合成会在新底色上留下
 //!    发白的轮廓。利用 `I = a·F + (1-a)·Bg` 反解出前景真实颜色
 //!    `F = (I - (1-a)·Bg) / a`，从根本上消除白边。
-//! 5. **合成**：`out = a·F + (1-a)·目标色`。
+//! 6. **合成**：`out = a·F + (1-a)·目标色`。
 //!
 //! 能力边界：背景若本身存在强渐变或复杂纹理，全局颜色模型会失效，
 //! 此时应改用云端 AI 抠图（内核已预留接口）。这一限制在界面上需要明确提示。
@@ -31,19 +35,40 @@ pub struct BackgroundOptions {
     /// 目标底色 RGB
     pub target_color: [u8; 3],
     /// 背景相似度阈值（0~1）。越大越宽松，越容易把接近背景的前景也判为背景。
+    ///
+    /// 该值同时决定两件事：洪水填充的硬阈值，以及软边过渡带内
+    /// 「多接近才算背景」的颜色判据。取值越大，边缘处越多的半透明像素
+    /// 会被归为背景，观感上是把轮廓向内收了一圈。
     pub tolerance: f32,
-    /// 软边过渡带宽度（像素）。
+    /// 软边过渡带的**几何宽度**（像素）。只影响边界外侧多宽的一圈参与柔化，
+    /// 不影响带内像素被判为前景还是背景（那由 `tolerance` 决定）。
     pub feather_px: u32,
     /// 是否做白底去污染。原背景非纯色时该修正可能失效，可关闭。
     pub decontaminate: bool,
-    /// 边缘收放，取值 -1.0~1.0。
-    /// 正值收缩前景（去白边更彻底，但可能吃掉发丝）；负值扩张前景。
+    /// 边缘收放，取值 -1.0~1.0，作用在**几何**层面。
+    /// 正值收缩前景（把前景边界向内平移，可去掉一圈背景残留与白边）；
+    /// 负值扩张前景（把边界向外平移，保住更多发丝）。
+    /// 平移量 = |edge_offset| × [`EDGE_MAX_PX`] 像素。
     pub edge_offset: f32,
     /// 是否对 alpha 做一次轻度平滑，抑制锯齿。
     pub smooth_alpha: bool,
     /// 是否保留原图 alpha（原图本就有透明区域时，与其相乘而不是覆盖）
     pub preserve_original_alpha: bool,
 }
+
+/// 「边缘收放」在滑杆极值处对应的几何平移量（像素）。
+///
+/// 用**绝对像素**而非图像尺寸的比例，是因为证件照在换背景之前
+/// 已按规格裁到规定像素（如 295×413），此时绝对像素有明确含义；
+/// 且预览与成品走同一条流水线、在相同像素尺度上处理，观感一致。
+const EDGE_MAX_PX: f32 = 6.0;
+
+/// 软边过渡带内颜色判据的固定色阶跨度。
+///
+/// 这里刻意**不**把上界设成阈值的倍数：那样阈值上移会同时抬高上下界，
+/// 净效果互相抵消，界面上的「判定阈值」滑杆几乎看不出变化。
+/// 固定跨度后，阈值上移会让中间地带的像素真正从前景翻转为背景。
+const TOLERANCE_SPAN: f32 = 40.0;
 
 impl Default for BackgroundOptions {
     fn default() -> Self {
@@ -59,7 +84,23 @@ impl Default for BackgroundOptions {
     }
 }
 
-/// 背景颜色模型。
+impl BackgroundOptions {
+    /// 把**以像素为单位**的参数按给定比例缩放，其余参数原样保留。
+    ///
+    /// 用途：预览会先把图像降到较小尺寸再抠图（否则 12MP 照片单次预览要一秒以上，
+    /// 界面会被冻住）。此时若不按同一比例缩放 `feather_px` 与 `edge_offset`，
+    /// 预览里的边缘会比成品明显更硬或更软，「所见即所得」就不成立了。
+    ///
+    /// `tolerance` 是颜色维度、无色阶宽度，因此不参与缩放。
+    pub fn scaled_to(&self, scale: f32) -> Self {
+        let s = scale.clamp(0.0, 1.0);
+        Self {
+            feather_px: ((self.feather_px as f32) * s).round() as u32,
+            edge_offset: self.edge_offset * s,
+            ..self.clone()
+        }
+    }
+}/// 背景颜色模型。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BackgroundModel {
     /// 估计出的背景色
@@ -303,6 +344,20 @@ fn dilate(mask: &[bool], w: u32, h: u32, radius: u32) -> Vec<bool> {
     out
 }
 
+/// 对背景掩膜做腐蚀（可分离）。
+///
+/// 腐蚀用于「扩张前景」：把背景判定收缩若干像素，让边界向外让出空间。
+/// 实现上复用 [`dilate`]——对补集膨胀再取反，数学上等价于腐蚀，
+/// 避免再维护一份对称的循环代码。
+fn erode(mask: &[bool], w: u32, h: u32, radius: u32) -> Vec<bool> {
+    if radius == 0 {
+        return mask.to_vec();
+    }
+    let inverted: Vec<bool> = mask.iter().map(|v| !v).collect();
+    let grown = dilate(&inverted, w, h, radius);
+    grown.into_iter().map(|v| !v).collect()
+}
+
 /// 对 alpha 做 3x3 均值平滑（仅在过渡带内），抑制锯齿。
 fn smooth_alpha_band(alpha: &mut [f32], band: &[bool], w: u32, h: u32) {
     let src = alpha.to_vec();
@@ -347,10 +402,15 @@ pub fn replace_background(img: &RasterImage, opts: &BackgroundOptions) -> Result
 
     // 用第一帧估计背景模型
     let model = estimate_background(&img.frames[0].pixels)?;
-    // 自适应阈值：背景本身有噪声时适当放宽，否则固定阈值可能把背景判成前景
+    // 硬阈值：背景本身有噪声时适当放宽，否则固定阈值可能把背景判成前景。
+    // 该阈值同时是洪水填充的判据与软边过渡带的下界，
+    // 因此界面上的「判定阈值」直接决定了「多接近背景算背景」。
     let tol_px = (opts.tolerance * 255.0).max(model.noise * 4.0).clamp(4.0, 200.0);
-    // 过渡带上界：阈值再放大一档，作为「确定是前景」的分界
-    let tol_hi = (tol_px * 2.5).min(255.0);
+    // 过渡带上界：固定跨度而非按比例放大，避免阈值上移时上下界同步抬高、
+    // 净效果互相抵消（旧实现的问题，表现为滑杆调节几乎无效）。
+    let tol_hi = (tol_px + TOLERANCE_SPAN).min(255.0);
+    // 「边缘收放」对应的几何平移量
+    let edge_r = (opts.edge_offset.abs() * EDGE_MAX_PX).round() as u32;
 
     let w = img.width;
     let h = img.height;
@@ -362,9 +422,18 @@ pub fn replace_background(img: &RasterImage, opts: &BackgroundOptions) -> Result
     for f in &img.frames {
         let diff = compute_diff(&f.pixels, &model);
         let strict = tol_px.round() as u8;
-        let mut bg_mask = flood_fill_background(&diff, w, h, strict);
+        let bg_orig = flood_fill_background(&diff, w, h, strict);
 
-        // 过渡带 = 膨胀后的背景掩膜 减去 背景掩膜本身
+        // 边缘收放（几何）：正值收缩前景 => 膨胀背景掩膜；负值扩张前景 => 腐蚀背景掩膜。
+        let bg_mask = if edge_r == 0 {
+            bg_orig.clone()
+        } else if opts.edge_offset > 0.0 {
+            dilate(&bg_orig, w, h, edge_r)
+        } else {
+            erode(&bg_orig, w, h, edge_r)
+        };
+
+        // 过渡带 = 背景掩膜外扩 feather 后减去其自身
         let dilated = if opts.feather_px > 0 {
             dilate(&bg_mask, w, h, opts.feather_px)
         } else {
@@ -383,8 +452,11 @@ pub fn replace_background(img: &RasterImage, opts: &BackgroundOptions) -> Result
                 // 明确背景：完全透明
                 alpha[i] = 0.0;
                 bg_count += 1;
-            } else if dilated[i] {
-                // 过渡带：按颜色距离给出半透明值
+            } else if dilated[i] && !bg_orig[i] {
+                // 过渡带：按颜色距离给出半透明值。
+                // 条件里的 `!bg_orig[i]` 很关键——因「扩张前景」而从原背景
+                // 收回的像素本身就接近背景色，若按颜色距离计算会被判成全透明，
+                // 反而抵消掉扩张效果，因此这些像素一律按实心前景处理。
                 band[i] = true;
                 let d = diff[i] as f32;
                 let a = ((d - tol_px) / (tol_hi - tol_px)).clamp(0.0, 1.0);
@@ -396,20 +468,6 @@ pub fn replace_background(img: &RasterImage, opts: &BackgroundOptions) -> Result
             // 其余像素保持 alpha = 1（保护被前景包围的浅色区域，如白衬衫）
         }
 
-        // 边缘收放：整体平移 alpha 的过渡位置
-        if opts.edge_offset.abs() > 1e-6 {
-            let off = opts.edge_offset;
-            for a in alpha.iter_mut() {
-                *a = if off > 0.0 {
-                    // 收缩前景：抬高阈值
-                    ((*a - off) / (1.0 - off)).clamp(0.0, 1.0)
-                } else {
-                    // 扩张前景：压低阈值
-                    (*a / (1.0 + off)).clamp(0.0, 1.0)
-                };
-            }
-        }
-
         if opts.smooth_alpha {
             smooth_alpha_band(&mut alpha, &band, w, h);
         }
@@ -418,7 +476,6 @@ pub fn replace_background(img: &RasterImage, opts: &BackgroundOptions) -> Result
         let out = composite(&f.pixels, &alpha, &model, opts);
 
         // 释放掩膜，降低峰值内存
-        bg_mask.clear();
         band.clear();
 
         frames.push(Frame {
@@ -603,13 +660,15 @@ mod tests {
 
     #[test]
     fn 去污染消除发丝白边() {
-        // 构造半透明前景像素：50% 的黑混合 50% 的白背景 → 原图呈中灰
-        // 期望合成到蓝底后接近深色，而不是发白
+        // 构造半透明前景像素：50% 的黑混合 50% 的白背景 → 原图呈中灰。
+        // 灰度取 205 是刻意的——它到背景色（255）的距离落在过渡带的颜色区间内
+        // （默认阈值 0.12 → 下界约 30.6、上界约 70.6 色阶，205 对应距离 50），
+        // 因此会被判为半透明像素，去污染修正才会真正参与运算。
+        // 若取 128（距离 127）会直接被判成实心前景，测试就失去了意义。
         let mut img = RgbaImage::from_pixel(30, 30, Rgba([255, 255, 255, 255]));
-        // 中央 2px 宽的浅灰条带（模拟被背景渗色的发丝边缘）
         for y in 10..20 {
             for x in 14..16 {
-                img.put_pixel(x, y, Rgba([128, 128, 128, 255]));
+                img.put_pixel(x, y, Rgba([205, 205, 205, 255]));
             }
         }
         let raster = RasterImage::from_image(img);
@@ -732,6 +791,105 @@ mod tests {
             "收缩前景应提高背景占比（{} vs {}）",
             shrink.report.background_ratio,
             grow.report.background_ratio
+        );
+    }
+
+    /// 白底 + 中央深色方块 + 外围一圈浅灰「过渡色」。
+    ///
+    /// 浅灰到背景色的距离约 25 个色阶，正落在默认过渡带的上半段：
+    /// 阈值低时它算前景、阈值高时被吞进背景，因此可以据此验证
+    /// 「判定阈值」滑杆确实在改变像素归属。
+    fn halo_ring(w: u32, h: u32) -> RgbaImage {
+        let mut img = RgbaImage::from_pixel(w, h, Rgba([250, 250, 250, 255]));
+        let (cx, cy) = (w as i32 / 2, h as i32 / 2);
+        for y in 0..h {
+            for x in 0..w {
+                let d = (x as i32 - cx).abs().max((y as i32 - cy).abs());
+                if d < 10 {
+                    img.put_pixel(x, y, Rgba([30, 30, 30, 255]));
+                } else if d < 18 {
+                    img.put_pixel(x, y, Rgba([225, 225, 225, 255]));
+                }
+            }
+        }
+        img
+    }
+
+    #[test]
+    fn 判定阈值越高背景占比越大() {
+        let img = RasterImage::from_image(halo_ring(80, 80));
+        let low = replace_background(
+            &img,
+            &BackgroundOptions {
+                tolerance: 0.05,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let high = replace_background(
+            &img,
+            &BackgroundOptions {
+                tolerance: 0.30,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        // 阈值抬高后，浅灰过渡圈应从前景翻转为背景
+        assert!(
+            high.report.background_ratio > low.report.background_ratio + 0.05,
+            "抬高判定阈值必须吞掉更多过渡像素（低 {} vs 高 {}）",
+            low.report.background_ratio,
+            high.report.background_ratio
+        );
+        // 中央深色主体两种阈值下都必须保留
+        let px = high.image.first();
+        assert!(
+            px.get_pixel(40, 40).0[0] < 60,
+            "主体不应被误判为背景，实际 {:?}",
+            px.get_pixel(40, 40).0
+        );
+    }
+
+    #[test]
+    fn 边缘收放按几何像素平移边界() {
+        // 80×80 白底 + 40×40 深色方块（前景占比 0.25）
+        let img = RasterImage::from_image(white_bg_with_center(80, 80));
+        let base = replace_background(&img, &BackgroundOptions::default()).unwrap();
+        let shrink = replace_background(
+            &img,
+            &BackgroundOptions {
+                edge_offset: 0.5,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let grow = replace_background(
+            &img,
+            &BackgroundOptions {
+                edge_offset: -0.5,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let area = 80.0 * 80.0;
+        let fg = |r: &BackgroundOutput| area * (1.0 - r.report.background_ratio);
+        // 0.5 × 6px = 3px 的平移量：40×40 的方块应分别收窄/扩张为 34×34 / 46×46。
+        // 断言带上容差，因为边界像素的 alpha 是渐变的，占比统计存在少量误差。
+        assert!(
+            (fg(&base) - 1600.0).abs() < 60.0,
+            "默认参数下前景应约为 40×40=1600 像素，实际 {}",
+            fg(&base)
+        );
+        assert!(
+            (fg(&shrink) - 34.0 * 34.0).abs() < 120.0,
+            "收缩 3px 后前景应约为 34×34，实际 {}",
+            fg(&shrink)
+        );
+        assert!(
+            (fg(&grow) - 46.0 * 46.0).abs() < 160.0,
+            "扩张 3px 后前景应约为 46×46，实际 {}",
+            fg(&grow)
         );
     }
 }
