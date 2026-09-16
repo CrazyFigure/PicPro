@@ -1,0 +1,42 @@
+# Docker 构建上下文排除项
+#
+# 构建上下文越小，镜像构建越快。以下目录体积大且都能在容器内重新生成，
+# 若不打进上下文，会把数百 MB 甚至数 GB 传给 Docker 守护进程。
+
+# Flutter 与 Dart
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+
+# Rust 编译产物（最大的一块，务必排除）
+rust/target/
+rust_builder/cargokit/build/
+**/target/
+
+# 依赖缓存
+pubspec.lock.bak
+
+# 版本控制与 CI
+.git/
+.github/
+
+# 编辑器与本地配置
+.idea/
+.vscode/
+*.swp
+
+# AI 工具目录
+.workbuddy/
+.claude/
+.codex/
+.agents/
+.cursor/
+.qoder/
+
+# 本地临时文件
+dist/
+.dev-images/
+sample-images/
+*.log

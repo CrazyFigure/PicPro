@@ -1,0 +1,38 @@
+[package]
+name = "picpro_core"
+version = "0.1.0"
+edition = "2021"
+description = "PicPro 图像处理内核：批量压缩、换背景、转格式、按证件照规格裁剪"
+
+[lib]
+# 三种产物各有用途，缺一不可：
+# - cdylib：供 Flutter 插件在 Windows/Android 上动态链接（cargokit 依赖）；
+# - staticlib：静态链接方式备用；
+# - rlib：**必须**，否则 examples/ 与集成测试无法以 Rust 库形式链接本 crate
+#   （只声明 cdylib 时会出现 `cannot find crate` 的报错）。
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+# Flutter ↔ Rust 绑定层。版本必须与 flutter_rust_bridge_codegen 严格一致，
+# 否则生成的胶水代码与运行时结构不匹配。
+flutter_rust_bridge = "=2.13.0"
+
+
+# 位图编解码（png/jpeg/gif/webp/bmp/tiff）
+image = { version = "0.25.10", features = ["png", "jpeg", "gif", "webp", "bmp", "tiff"] }
+# JPEG 独立编码器：image 未暴露色度抽样控制，而 4:4:4 对证件照发丝边缘质量影响显著
+jpeg-encoder = "0.7.1"
+# SVG 栅格化（纯 Rust，含 WASM 支持，三端可用）
+resvg = "0.48.1"
+# 高质量重采样（SIMD 加速）
+fast_image_resize = "6.1.0"
+thiserror = "2.0.20"
+serde = { version = "1.0.229", features = ["derive"] }
+
+# rayon 无法在 wasm32-unknown-unknown 下工作，
+# 因此仅在非 wasm 目标启用；并行批处理在 wasm 端退化为串行。
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rayon = "1.12.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }

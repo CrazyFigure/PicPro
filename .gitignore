@@ -1,0 +1,70 @@
+# Dart / Flutter
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+
+# Rust / Cargo
+rust/target/
+**/target/
+rust_builder/cargokit/build/
+rust_builder/windows/cargokit/
+rust_builder/linux/cargokit/
+rust_builder/macos/cargokit/
+rust_builder/android/cargokit/
+rust_builder/ios/cargokit/
+Cargo.lock.bak
+
+# Rust → WASM 产物（由构建脚本生成，不入库）
+web/pkg/
+rust/pkg/
+
+# Android
+android/.gradle/
+android/local.properties
+android/app/debug/
+android/app/profile/
+android/app/release/
+
+# Windows
+windows/flutter/ephemeral/
+windows/runner/flutter_ephemeral/
+
+# 密钥与本地配置
+*.jks
+*.keystore
+key.properties
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# 本地安装包与构建产物输出
+dist/
+
+# 本地测试用的图片素材（体积大，不提交）
+.dev-images/
+sample-images/
+
+# AI 工具配置目录（不提交到仓库）
+.codebuddy/
+.workbuddy/
+.claude/
+.codex/
+.agents/
+.cursor/
+.qoder/
+
+# AI 工具说明文档（不提交到仓库）
+CLAUDE.md
+AGENTS.md
+CODEBUDDY.md
+CURSOR.md
+PROJECT_PLAN.md

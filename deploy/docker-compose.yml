@@ -1,0 +1,26 @@
+# PicPro Web 版 docker-compose 配置
+#
+# 用于 1Panel 的「容器 → 编排」功能：把本文件内容粘贴进去即可创建应用。
+# 也可直接在服务器上执行 `docker compose up -d --build`。
+#
+# 端口可按需修改左侧的宿主机端口（如 80:80），容器内固定监听 80。
+
+services:
+  picpro:
+    build:
+      # 构建上下文是仓库根目录：镜像需要同时拿到 Flutter 工程与 Rust 内核
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: picpro-web:latest
+    container_name: picpro
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    # 静态站点无需持久化数据；图片始终留在用户浏览器内，服务器不接触任何文件
+    read_only: false
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s

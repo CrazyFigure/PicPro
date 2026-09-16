@@ -1,0 +1,19 @@
+# Android 签名配置示例
+#
+# 用法：复制本文件为 android/key.properties 并填入实际值。
+# key.properties 已被 .gitignore 排除，切勿提交到仓库。
+#
+# CI 环境不使用本文件：workflow 通过环境变量注入同样的四项配置，
+# 环境变量优先于本文件，因此本地与 CI 可以共存互不干扰。
+
+# 密钥库文件路径（可用绝对路径）
+storeFile=/absolute/path/to/upload-keystore.jks
+
+# 密钥库口令
+storePassword=your-store-password
+
+# 密钥别名
+keyAlias=picpro
+
+# 密钥口令
+keyPassword=your-key-password
