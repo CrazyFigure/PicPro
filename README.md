@@ -113,29 +113,35 @@ cargo run --release --example cli -- in.jpg out.jpg --preset size_1cun --bg 255,
 ## 🚀 部署
 
 Web 版的全部处理都在浏览器内完成，服务器只托管静态文件，用户的图片不会离开设备。
-详见 [`deploy/1panel.md`](deploy/1panel.md)，提供静态网站与 Docker 容器两种路线。
+详见 [`deploy/1panel.md`](deploy/1panel.md)，提供「直接拉镜像 / 从源码构建 / 静态网站」三条路线。
 
-### 直接用镜像仓库的镜像
+### 直接用镜像仓库的镜像（推荐）
 
 推版本标签会**自动构建并推送**镜像到 Docker Hub，无需自己编译：
 
 ```bash
+# 固定版本（推荐用于生产）
+docker pull crazyfigure/picpro:0.1.0
+
 # 最新正式版
 docker pull crazyfigure/picpro:latest
-
-# 固定版本（推荐用于生产）
-docker pull crazyfigure/picpro:1.0.0
 
 # main 分支的最新构建
 docker pull crazyfigure/picpro:edge
 ```
 
-镜像同时提供 `linux/amd64` 与 `linux/arm64`，两者内容一致。
+镜像同时提供 `linux/amd64` 与 `linux/arm64`，容器会自动匹配服务器架构。
 
 运行：
 
 ```bash
-docker run -d --name picpro -p 8080:80 --restart unless-stopped crazyfigure/picpro:latest
+docker run -d --name picpro -p 8080:80 --restart unless-stopped crazyfigure/picpro:0.1.0
+```
+
+或用编排文件（免构建，可直接粘贴到 1Panel 的「容器 → 编排」）：
+
+```bash
+docker compose -f deploy/docker-compose.image.yml up -d
 ```
 
 ### 从源码构建
@@ -150,6 +156,7 @@ docker compose -f deploy/docker-compose.yml up -d --build
 > 部署时必须保留 `deploy/nginx.conf` 中的 `Cross-Origin-Opener-Policy` 与
 > `Cross-Origin-Embedder-Policy` 响应头——Rust 内核是多线程 WASM，
 > 依赖 `SharedArrayBuffer`，缺少这两个头页面会直接无法加载。
+> 官方镜像已内置该配置，自行配置 nginx 时需留意。
 
 ## 🛠 技术栈
 

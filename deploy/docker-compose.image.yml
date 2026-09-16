@@ -1,0 +1,27 @@
+# PicPro Web 版 —— 直接使用官方镜像（免构建）
+#
+# 与 docker-compose.yml 的区别：本文件不构建镜像，直接拉取 Docker Hub 上的
+# 官方镜像。适合服务器性能有限、或只想快速跑起来的场景。
+#
+# 用法：
+#   docker compose -f deploy/docker-compose.image.yml up -d
+#
+# 也可把本文件内容粘贴到 1Panel 的「容器 → 编排 → 创建编排」中使用。
+#
+# 镜像为多架构（linux/amd64 与 linux/arm64），compose 会自动选择匹配服务器架构的那一份。
+
+services:
+  picpro:
+    # 生产环境建议把 latest 换成固定版本号，避免上游更新带来意外变化，
+    # 例如 crazyfigure/picpro:0.1.0
+    image: crazyfigure/picpro:latest
+    container_name: picpro
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
