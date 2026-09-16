@@ -129,6 +129,8 @@ jobs:
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
+          # 由 GitHub 依据提交记录自动生成发版说明，避免 Release 页面空无一物
+          generate_release_notes: true
           files: PicPro-Web.zip
           fail_on_unmatched_files: false
 
@@ -272,6 +274,8 @@ jobs:
         if: steps.signing.outputs.enabled == 'true' && github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
+          # 由 GitHub 依据提交记录自动生成发版说明，避免 Release 页面空无一物
+          generate_release_notes: true
           files: PicPro-*.apk
           fail_on_unmatched_files: false
 
@@ -374,6 +378,8 @@ jobs:
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
+          # 由 GitHub 依据提交记录自动生成发版说明，避免 Release 页面空无一物
+          generate_release_notes: true
           files: dist/PicPro-Setup-*.exe
           fail_on_unmatched_files: false
 
