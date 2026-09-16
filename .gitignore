@@ -57,6 +57,9 @@ Thumbs.db
 # 本地安装包与构建产物输出
 dist/
 
+# Web 运行检查脚本产生的截图
+web-check*.png
+
 # 本地测试用的图片素材（体积大，不提交）
 .dev-images/
 sample-images/

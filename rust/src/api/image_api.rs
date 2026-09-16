@@ -1,7 +1,14 @@
 //! 对外暴露的处理接口。
 //!
-//! Dart 侧调用的每个函数都在这里。函数默认在 FRB 的工作线程池上执行，
-//! 不会阻塞 UI 线程；`process_batch` 额外通过 `StreamSink` 回报进度。
+//! Dart 侧调用的每个函数都在这里。
+//!
+//! **调用模式**：全部为**同步**函数（由 flutter_rust_bridge.yaml 中的
+//! `default_dart_async: false` 统一控制）。这样做的原因是异步调用依赖 FRB 的
+//! worker 线程池，而线程池需要 SharedArrayBuffer，进而要求页面处于跨源隔离状态，
+//! 而跨源隔离只在 HTTPS / localhost 等安全来源上才生效——那会让
+//! 「公网 IP + 纯 HTTP」的部署方式完全无法使用。
+//! 代价是 Rust 调用会阻塞调用线程，界面在单张处理期间会短暂无响应，
+//! 批量处理时由 Dart 侧在每张之间让出事件循环来刷新进度。
 //!
 //! **错误类型**：统一使用内核的 [`PicProError`]，而不是 `anyhow::Error`。
 //! 这一点很关键——FRB 会把 `Result<T, E>` 的 `E` 导出为 Dart 异常类，
@@ -18,7 +25,6 @@ use crate::core::error::{PicProError, Result};
 use crate::core::format::ImageFormat;
 use crate::core::pipeline::{run, CropSpec, PipelineOutput, PipelineRequest};
 use crate::core::presets::{all_presets, PresetBackground};
-use crate::frb_generated::StreamSink;
 
 /// 内核版本号。
 pub fn core_version() -> String {
@@ -225,113 +231,6 @@ pub fn make_preview(
     Ok(out.bytes)
 }
 
-/// 批量处理，逐个回报进度。
-///
-/// 原生端使用 rayon 并行处理（进度通过通道汇总到单线程再推给 Dart，
-/// 避免多线程同时写 sink 造成顺序错乱）；WASM 端无 rayon，退化为串行。
-/// 每一项独立成败：单项失败不会中断整批，失败信息随该项的进度一起回报。
-pub fn process_batch(
-    items: Vec<BatchItemDto>,
-    options: ProcessOptionsDto,
-    sink: StreamSink<BatchProgressDto>,
-) {
-    // 参数解析失败属于整批级别的错误，直接以一条全失败进度回报，
-    // 避免 Dart 侧需要区分「批级异常」与「单项异常」两种处理路径。
-    let resolved = match resolve_options(&options) {
-        Ok(r) => r,
-        Err(e) => {
-            let msg = format!("{e}");
-            for (i, item) in items.iter().enumerate() {
-                let _ = sink.add(BatchProgressDto {
-                    index: i as u32,
-                    id: item.id.clone(),
-                    done: i as u32 + 1,
-                    total: items.len() as u32,
-                    succeeded: 0,
-                    failed: i as u32 + 1,
-                    result: None,
-                    error: Some(msg.clone()),
-                });
-            }
-            return;
-        }
-    };
-
-    let total = items.len() as u32;
-    let succeeded = std::sync::atomic::AtomicU32::new(0);
-    let failed = std::sync::atomic::AtomicU32::new(0);
-    let done = std::sync::atomic::AtomicU32::new(0);
-
-    // 处理单项并组装进度回报
-    let handle = |item: &BatchItemDto, index: u32| -> BatchProgressDto {
-        let req = PipelineRequest {
-            input_bytes: Some(item.bytes.clone()),
-            input_path: None,
-            filename: item.filename.clone(),
-            crop: resolved.crop.clone(),
-            background: resolved.background.clone(),
-            compress: resolved.compress.clone(),
-            output_format: resolved.output_format,
-            decode: resolved.decode.clone(),
-        };
-        let (result, error) = match run(&req) {
-            Ok(out) => {
-                succeeded.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                (Some(to_result_dto(out)), None)
-            }
-            Err(e) => {
-                failed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                (None, Some(format!("{e}")))
-            }
-        };
-        let d = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-        BatchProgressDto {
-            index,
-            id: item.id.clone(),
-            done: d,
-            total,
-            succeeded: succeeded.load(std::sync::atomic::Ordering::Relaxed),
-            failed: failed.load(std::sync::atomic::Ordering::Relaxed),
-            result,
-            error,
-        }
-    };
-
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        use rayon::prelude::*;
-        let (tx, rx) = std::sync::mpsc::channel::<BatchProgressDto>();
-        std::thread::scope(|scope| {
-            // 汇总线程：唯一向 sink 写入的地方，保证 Dart 侧收到有序事件
-            scope.spawn(move || {
-                for p in rx {
-                    // 写入失败说明 Dart 侧已取消监听，直接停止即可
-                    if sink.add(p).is_err() {
-                        break;
-                    }
-                }
-            });
-            items.par_iter().enumerate().for_each(|(i, item)| {
-                let p = handle(item, i as u32);
-                // 接收端已关闭时忽略发送错误
-                let _ = tx.send(p);
-            });
-            // 释放发送端，让汇总线程的 for 循环自然结束
-            drop(tx);
-        });
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        // WASM 无多线程，串行处理
-        for (i, item) in items.iter().enumerate() {
-            let p = handle(item, i as u32);
-            if sink.add(p).is_err() {
-                break;
-            }
-        }
-    }
-}
 
 /// 已解析的内核参数，跨线程共享时需要可克隆。
 #[derive(Clone)]

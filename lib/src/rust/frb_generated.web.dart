@@ -24,14 +24,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   });
 
   @protected
-  AnyhowException dco_decode_AnyhowException(dynamic raw);
-
-  @protected
-  RustStreamSink<BatchProgressDto> dco_decode_StreamSink_batch_progress_dto_Sse(
-    dynamic raw,
-  );
-
-  @protected
   String dco_decode_String(dynamic raw);
 
   @protected
@@ -39,12 +31,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BackgroundDto dco_decode_background_dto(dynamic raw);
-
-  @protected
-  BatchItemDto dco_decode_batch_item_dto(dynamic raw);
-
-  @protected
-  BatchProgressDto dco_decode_batch_progress_dto(dynamic raw);
 
   @protected
   bool dco_decode_bool(dynamic raw);
@@ -72,9 +58,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ProcessOptionsDto dco_decode_box_autoadd_process_options_dto(dynamic raw);
-
-  @protected
-  ProcessResultDto dco_decode_box_autoadd_process_result_dto(dynamic raw);
 
   @protected
   int dco_decode_box_autoadd_u_32(dynamic raw);
@@ -105,9 +88,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<BackgroundChoiceDto> dco_decode_list_background_choice_dto(dynamic raw);
-
-  @protected
-  List<BatchItemDto> dco_decode_list_batch_item_dto(dynamic raw);
 
   @protected
   List<ColorDto> dco_decode_list_color_dto(dynamic raw);
@@ -146,9 +126,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   double? dco_decode_opt_box_autoadd_f_32(dynamic raw);
 
   @protected
-  ProcessResultDto? dco_decode_opt_box_autoadd_process_result_dto(dynamic raw);
-
-  @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
 
   @protected
@@ -182,14 +159,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void dco_decode_unit(dynamic raw);
 
   @protected
-  AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
-
-  @protected
-  RustStreamSink<BatchProgressDto> sse_decode_StreamSink_batch_progress_dto_Sse(
-    SseDeserializer deserializer,
-  );
-
-  @protected
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
@@ -199,12 +168,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BackgroundDto sse_decode_background_dto(SseDeserializer deserializer);
-
-  @protected
-  BatchItemDto sse_decode_batch_item_dto(SseDeserializer deserializer);
-
-  @protected
-  BatchProgressDto sse_decode_batch_progress_dto(SseDeserializer deserializer);
 
   @protected
   bool sse_decode_bool(SseDeserializer deserializer);
@@ -240,11 +203,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  ProcessResultDto sse_decode_box_autoadd_process_result_dto(
-    SseDeserializer deserializer,
-  );
-
-  @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
@@ -273,11 +231,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<BackgroundChoiceDto> sse_decode_list_background_choice_dto(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  List<BatchItemDto> sse_decode_list_batch_item_dto(
     SseDeserializer deserializer,
   );
 
@@ -324,11 +277,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   double? sse_decode_opt_box_autoadd_f_32(SseDeserializer deserializer);
 
   @protected
-  ProcessResultDto? sse_decode_opt_box_autoadd_process_result_dto(
-    SseDeserializer deserializer,
-  );
-
-  @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
@@ -367,18 +315,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int sse_decode_i_32(SseDeserializer deserializer);
 
   @protected
-  void sse_encode_AnyhowException(
-    AnyhowException self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_StreamSink_batch_progress_dto_Sse(
-    RustStreamSink<BatchProgressDto> self,
-    SseSerializer serializer,
-  );
-
-  @protected
   void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
@@ -389,15 +325,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_background_dto(BackgroundDto self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_batch_item_dto(BatchItemDto self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_batch_progress_dto(
-    BatchProgressDto self,
-    SseSerializer serializer,
-  );
 
   @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
@@ -442,12 +369,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_box_autoadd_process_result_dto(
-    ProcessResultDto self,
-    SseSerializer serializer,
-  );
-
-  @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
 
   @protected
@@ -477,12 +398,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_background_choice_dto(
     List<BackgroundChoiceDto> self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_list_batch_item_dto(
-    List<BatchItemDto> self,
     SseSerializer serializer,
   );
 
@@ -542,12 +457,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_opt_box_autoadd_f_32(double? self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_opt_box_autoadd_process_result_dto(
-    ProcessResultDto? self,
-    SseSerializer serializer,
-  );
 
   @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);

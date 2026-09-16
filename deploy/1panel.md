@@ -5,49 +5,24 @@ Web 版的全部图像处理都在**浏览器内**完成，服务器只负责托
 
 ---
 
-## ⚠️ 前置要求：必须通过 HTTPS 访问（不可跳过）
+## 访问方式：http 与 https 都可以
 
-**用 `http://<公网IP>:<端口>` 直接访问是打不开的**，页面会是空白，
-控制台报 `SharedArrayBuffer transfer requires self.crossOriginIsolated`。
+Web 版把 Rust 内核配置为**单线程**调用，不依赖 `SharedArrayBuffer`，
+因此**不需要跨源隔离，也不要求 HTTPS**——直接用 `http://<公网IP>:<端口>` 就能打开。
 
-原因是浏览器的安全上下文规则：
+> 背景：多线程内核依赖 `SharedArrayBuffer`，浏览器只在页面「跨源隔离」时
+> 才允许使用它，而跨源隔离只在 HTTPS / localhost 这类**安全来源**上才会被采纳。
+> 纯 HTTP 的公网 IP 会让这条链路断掉，表现为页面空白、控制台报
+> `SharedArrayBuffer transfer requires self.crossOriginIsolated`。
+> 本项目通过关闭 FRB 的异步调用（让所有内核调用只跑在主线程）绕开了该限制。
 
-1. Rust 内核编译为**多线程 WASM**，依赖 `SharedArrayBuffer` 作为共享内存；
-2. 浏览器只在页面「跨源隔离」时才允许使用它，而跨源隔离由 `COOP` / `COEP` 响应头开启；
-3. 但**在非安全来源上浏览器会直接忽略这两个响应头**——只有
-   `https://` 或 `localhost` 才被视为安全来源。纯 HTTP 的公网 IP 不在其列。
+**已知取舍**：同步调用会占用浏览器主线程，处理单张大图期间界面会短暂无响应；
+批量处理时进度条会在每张之间刷新。若对这种卡顿敏感，
+大批量处理建议改用 Windows 桌面版（不受此限制）。
 
-因此部署时必须满足以下任一条件：
-
-| 方式 | 说明 | 适用 |
-|---|---|---|
-| **HTTPS** | 绑定域名并在 1Panel 申请证书（推荐） | 正式对外提供服务 |
-| **localhost** | 通过 SSH 隧道把端口转到本机 | 临时自测，见下方「临时自测办法」 |
-
-> 证书只需加在**浏览器访问的那一层**。用反向代理终止 TLS 后，
-> 容器内部继续用 HTTP 即可，无需在容器里配证书。
-
-### 临时自测办法（未配域名时）
-
-在本机执行 SSH 端口转发，把服务器的端口映射到本地：
-
-```bash
-ssh -L 8111:127.0.0.1:8111 <用户名>@43.133.76.254
-```
-
-然后浏览器访问 `http://localhost:8111`。
-`localhost` 属于安全来源，跨源隔离能正常生效，功能即可完整验证。
-
-### 正式部署：绑定域名并启用 HTTPS
-
-1. 把域名解析到服务器 IP。
-2. 在 1Panel 中为容器创建**反向代理**站点，目标填 `http://127.0.0.1:8080`。
-3. 在该站点申请 Let's Encrypt 证书，并开启**强制 HTTPS**。
-4. 用 `https://你的域名` 访问。
-
-> 若在反向代理层额外添加了 `add_header`，请确认没有覆盖掉 `COOP` 与 `COEP`。
-
----
+> 仍然建议配置 HTTPS，但这是出于常规安全考虑（避免浏览器提示「不安全」），
+> 不再是功能前提。配置方式与普通站点相同：域名 → 反向代理 → 申请证书；
+> 证书只需加在浏览器访问的那一层，容器内部保持 HTTP 即可。
 
 三条路线任选其一：
 
@@ -222,47 +197,20 @@ docker run -d --name picpro -p 8080:80 --restart unless-stopped picpro-web:lates
 
 ## 常见问题
 
-**页面空白，控制台报 `SharedArrayBuffer` / `crossOriginIsolated` 相关错误**
+**页面空白，控制台报 `SharedArrayBuffer` / `crossOriginIsolated` / `WorkerPool`**
 
-按以下顺序排查，**第一种情况最常见**：
+当前版本（0.1.3 起）已通过单线程内核消除了该限制，正常情况不会再出现。
+若仍遇到，最可能的原因是**容器跑的还是旧镜像**——请重新拉取
+`crazyfigure/picpro:latest`（拉取时保留「强制拉取镜像」）后重建容器。
 
-1. **用的是 HTTP 而非 HTTPS**（公网 IP + 端口直连）。
-   此时浏览器会直接忽略 `COOP` / `COEP`，控制台会有类似提示：
-   *"The Cross-Origin-Opener-Policy header has been ignored, because the URL's
-   origin was untrustworthy... Please deliver the response using the HTTPS protocol."*
-   → 必须改用域名 + HTTPS，或临时用 `http://localhost` 访问（见开头「前置要求」）。
-
-2. **服务器没有发送跨源隔离响应头**（HTTPS 下仍失败时检查）。
-   确认响应头包含：
-   ```
-   Cross-Origin-Opener-Policy: same-origin
-   Cross-Origin-Embedder-Policy: require-corp
-   ```
-   用官方镜像不会漏配；自行配置 nginx 时请对照 `deploy/nginx.conf`。
+确认方法：看响应里是否引用了 `pkg/picpro_core.js`，并在浏览器控制台检查
+`crossOriginIsolated` 的值。新版即使该值为 `false` 也能正常运行。
 
 **页面空白，控制台报 `Identifier 'wasm_bindgen' has already been declared`**
 
 `pkg/picpro_core.js` 被加载了两次。flutter_rust_bridge 会自行注入该脚本，
 因此 `web/index.html` 中**不应**再手动写 `<script src="pkg/picpro_core.js">`。
 若你改动过 `index.html`，请删掉那一行。
-
-**打开网址后浏览器直接下载了一个文件，而不是显示页面**
-
-这是 MIME 类型丢失导致的：`index.html` 没有被识别为 `text/html`，
-浏览器就把它当二进制文件下载了。
-
-最常见的原因是 nginx 配置里在 server 或 location 层写了 `types` 块
-（常见于想补 `application/wasm wasm`）。nginx 的 `types` 在这些层级是
-**替换**而非合并 http 层的类型表，一写就会把 `.html` 等映射全部覆盖掉，
-随后回落到 `default_type`（官方 nginx 镜像设为 `application/octet-stream`）。
-
-解决：删掉那个 `types` 块即可。nginx 自带的 `mime.types` 本来就包含
-`application/wasm`，不需要手动声明。可以用下面的命令确认当前返回的类型：
-
-```bash
-curl -sI http://<你的地址>/ | grep -i content-type
-# 正常应为 text/html
-```
 
 **页面刷新后 404**
 

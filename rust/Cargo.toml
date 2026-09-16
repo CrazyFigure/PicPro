@@ -29,10 +29,9 @@ fast_image_resize = "6.1.0"
 thiserror = "2.0.20"
 serde = { version = "1.0.229", features = ["derive"] }
 
-# rayon 无法在 wasm32-unknown-unknown 下工作，
-# 因此仅在非 wasm 目标启用；并行批处理在 wasm 端退化为串行。
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-rayon = "1.12.0"
+# 注：这里曾依赖 rayon 做批量并行处理。改为同步调用模式后，
+# 批量处理改由 Dart 侧逐张调用，rayon 已无使用，故移除该依赖。
+# 若将来恢复原生端的并行批处理，再把它加回来（仅限非 wasm 目标）。
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }

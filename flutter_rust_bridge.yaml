@@ -1,3 +1,25 @@
+# flutter_rust_bridge 代码生成配置
 rust_input: crate::api
 rust_root: rust/
 dart_output: lib/src/rust
+
+# 关闭 Dart 侧默认异步，使所有 `pub fn` 生成同步的 Dart 函数。
+#
+# 为什么必须这样做：
+# FRB 的异步调用依赖 worker 线程池，而线程池需要 SharedArrayBuffer 作为共享内存。
+# 浏览器只在页面「跨源隔离」时才允许使用它，跨源隔离又只在 HTTPS 或 localhost
+# 这类安全来源上才被采纳——因此在「公网 IP + 纯 HTTP」的部署方式下，
+# worker 池创建必然失败（DataCloneError: SharedArrayBuffer transfer requires
+# self.crossOriginIsolated），表现为页面空白。
+#
+# 设为 false 后所有调用都只在主线程执行、不使用其它线程，因而不再需要共享缓冲，
+# 也就去掉了对 HTTPS 的硬性依赖（参考 FRB 官方文档
+# 「Run without cross-origin headers」一节）。
+#
+# 代价（已知且已接受）：
+# 1. Rust 调用变为同步，会阻塞调用它的线程。Web 端没有后台线程可用，
+#    因此处理单张图片期间界面会短暂无响应；本项目在批量循环中通过
+#    `await Future.delayed(Duration.zero)` 让出事件循环，使进度能刷新。
+# 2. 原生端（Windows / Android）也因此失去了多线程并行的批量处理，
+#    目前是逐张串行。如需恢复，可在原生端把批处理放进后台 isolate 调用。
+default_dart_async: false

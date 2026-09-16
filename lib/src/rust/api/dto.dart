@@ -7,7 +7,7 @@ import '../frb_generated.dart';
 import '../lib.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 /// 预设底色选项（名称 + 标准色值）。
 class BackgroundChoiceDto {
@@ -79,91 +79,6 @@ class BackgroundDto {
           smoothAlpha == other.smoothAlpha;
 }
 
-/// 批量处理输入项。
-class BatchItemDto {
-  /// 调用方自定义的稳定标识，用于把进度回报对应回列表行
-  final String id;
-  final Uint8List bytes;
-  final String? filename;
-
-  const BatchItemDto({required this.id, required this.bytes, this.filename});
-
-  @override
-  int get hashCode => id.hashCode ^ bytes.hashCode ^ filename.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is BatchItemDto &&
-          runtimeType == other.runtimeType &&
-          id == other.id &&
-          bytes == other.bytes &&
-          filename == other.filename;
-}
-
-/// 批量处理进度回报。
-class BatchProgressDto {
-  /// 该输入项在提交列表中的下标
-  final int index;
-
-  /// 调用方标识，原样回传
-  final String id;
-
-  /// 累计完成数（含成功与失败）
-  final int done;
-
-  /// 总任务数
-  final int total;
-
-  /// 累计成功数
-  final int succeeded;
-
-  /// 累计失败数
-  final int failed;
-
-  /// 成功时的处理结果
-  final ProcessResultDto? result;
-
-  /// 失败时的错误信息
-  final String? error;
-
-  const BatchProgressDto({
-    required this.index,
-    required this.id,
-    required this.done,
-    required this.total,
-    required this.succeeded,
-    required this.failed,
-    this.result,
-    this.error,
-  });
-
-  @override
-  int get hashCode =>
-      index.hashCode ^
-      id.hashCode ^
-      done.hashCode ^
-      total.hashCode ^
-      succeeded.hashCode ^
-      failed.hashCode ^
-      result.hashCode ^
-      error.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is BatchProgressDto &&
-          runtimeType == other.runtimeType &&
-          index == other.index &&
-          id == other.id &&
-          done == other.done &&
-          total == other.total &&
-          succeeded == other.succeeded &&
-          failed == other.failed &&
-          result == other.result &&
-          error == other.error;
-}
-
 /// RGB 颜色。
 class ColorDto {
   final int red;
@@ -175,8 +90,7 @@ class ColorDto {
   /// 转换为内核使用的三字节颜色，并夹紧到 0~255。
   ///
   /// Dart 侧传入越界值时不应导致崩溃，因此统一夹紧而非报错。
-  Future<U8Array3> toRgb() =>
-      RustLib.instance.api.crateApiDtoColorDtoToRgb(that: this);
+  U8Array3 toRgb() => RustLib.instance.api.crateApiDtoColorDtoToRgb(that: this);
 
   @override
   int get hashCode => red.hashCode ^ green.hashCode ^ blue.hashCode;

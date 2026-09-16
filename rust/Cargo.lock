@@ -1176,7 +1176,6 @@ dependencies = [
  "flutter_rust_bridge",
  "image",
  "jpeg-encoder",
- "rayon",
  "resvg",
  "serde",
  "thiserror",

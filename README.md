@@ -115,14 +115,23 @@ cargo run --release --example cli -- in.jpg out.jpg --preset size_1cun --bg 255,
 Web 版的全部处理都在浏览器内完成，服务器只托管静态文件，用户的图片不会离开设备。
 详见 [`deploy/1panel.md`](deploy/1panel.md)，提供「直接拉镜像 / 从源码构建 / 静态网站」三条路线。
 
-> **⚠️ 必须通过 HTTPS（或 localhost）访问。**
-> Rust 内核是多线程 WASM，依赖 `SharedArrayBuffer`；浏览器只在页面「跨源隔离」时
-> 才允许使用它，而跨源隔离由 `COOP` / `COEP` 响应头开启——但**在非安全来源上
-> 浏览器会直接忽略这两个头**。因此用 `http://<公网IP>:<端口>` 直连会得到空白页，
-> 控制台报 `SharedArrayBuffer transfer requires self.crossOriginIsolated`。
-> 正式部署请绑定域名并在 1Panel 申请证书；临时自测可用
-> `ssh -L 8111:127.0.0.1:8111 user@<服务器IP>` 后访问 `http://localhost:8111`。
-> 证书只需加在浏览器访问的那一层，容器内部保持 HTTP 即可。
+> **http 与 https 都可以，无需域名。**
+> Web 版把 Rust 内核配置为**单线程**调用（`default_dart_async: false`），
+> 因此不依赖 `SharedArrayBuffer`，也就不再需要跨源隔离，
+> 可以直接用 `http://<公网IP>:<端口>` 访问。
+>
+> 之所以这样做：多线程内核依赖 `SharedArrayBuffer`，而浏览器只在
+> 「跨源隔离」状态下允许使用它，跨源隔离又只在 HTTPS / localhost 这类
+> **安全来源**上才会被采纳——纯 HTTP 的公网 IP 会让这条链路完全断掉
+> （表现为页面空白，控制台报 `SharedArrayBuffer transfer requires
+> self.crossOriginIsolated`）。
+>
+> **代价**：同步调用会占用主线程，处理单张图片期间界面短暂无响应；
+> 批量处理时进度条会在每张之间刷新。如需秒级以下的大批量处理体验，
+> 建议使用 Windows 桌面版（不受此限制）。
+>
+> `deploy/nginx.conf` 中仍保留了 `COOP` / `COEP` 响应头，它们现在是
+> 可选项（HTTP 下会被浏览器忽略），留着是为了将来若改回多线程内核可直接生效。
 
 ### 直接用镜像仓库的镜像（推荐）
 
@@ -130,7 +139,7 @@ Web 版的全部处理都在浏览器内完成，服务器只托管静态文件�
 
 ```bash
 # 固定版本（推荐用于生产）
-docker pull crazyfigure/picpro:0.1.0
+docker pull crazyfigure/picpro:0.1.3
 
 # 最新正式版
 docker pull crazyfigure/picpro:latest
@@ -144,7 +153,7 @@ docker pull crazyfigure/picpro:edge
 运行：
 
 ```bash
-docker run -d --name picpro -p 8080:80 --restart unless-stopped crazyfigure/picpro:0.1.0
+docker run -d --name picpro -p 8080:80 --restart unless-stopped crazyfigure/picpro:0.1.3
 ```
 
 或用编排文件（免构建，可直接粘贴到 1Panel 的「容器 → 编排」）：
@@ -162,10 +171,9 @@ docker compose -f deploy/docker-compose.yml up -d --build
 首次构建需下载 Flutter 镜像并编译 Rust/Flutter，耗时较长（10~25 分钟）；
 直接拉取上面的官方镜像可以跳过这一步。
 
-> 部署时必须保留 `deploy/nginx.conf` 中的 `Cross-Origin-Opener-Policy` 与
-> `Cross-Origin-Embedder-Policy` 响应头——Rust 内核是多线程 WASM，
-> 依赖 `SharedArrayBuffer`，缺少这两个头页面会直接无法加载。
-> 官方镜像已内置该配置，自行配置 nginx 时需留意。
+> 自行配置 nginx 时，建议直接沿用 `deploy/nginx.conf`：它内置了单页应用回退、
+> `.wasm` 的 MIME 类型与缓存策略。其中的 `COOP` / `COEP` 响应头现在是可选项
+> （HTTP 下浏览器会忽略），保留是为了将来若改回多线程内核可直接生效。
 
 ## 🛠 技术栈
 

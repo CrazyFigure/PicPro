@@ -58,7 +58,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 
   @override
   Future<void> executeRustInitializers() async {
-    await api.crateApiInitApp();
+    api.crateApiInitApp();
   }
 
   @override
@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 587978194;
+  int get rustContentHash => -605537543;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -81,43 +81,38 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
-  Future<U8Array3> crateApiDtoColorDtoToRgb({required ColorDto that});
+  U8Array3 crateApiDtoColorDtoToRgb({required ColorDto that});
 
-  Future<String> crateApiImageApiCoreVersion();
+  String crateApiImageApiCoreVersion();
 
-  Future<void> crateApiInitApp();
+  void crateApiInitApp();
 
-  Future<List<PresetDto>> crateApiImageApiListPresets();
+  List<PresetDto> crateApiImageApiListPresets();
 
-  Future<Uint8List> crateApiImageApiMakePreview({
+  Uint8List crateApiImageApiMakePreview({
     required List<int> bytes,
     String? filename,
     required ProcessOptionsDto options,
     required int maxSide,
   });
 
-  Future<ImageInfoDto> crateApiImageApiProbeImage({
+  ImageInfoDto crateApiImageApiProbeImage({
     required List<int> bytes,
     String? filename,
   });
 
-  Stream<BatchProgressDto> crateApiImageApiProcessBatch({
-    required List<BatchItemDto> items,
-    required ProcessOptionsDto options,
-  });
-
-  Future<ProcessResultDto> crateApiImageApiProcessImage({
+  ProcessResultDto crateApiImageApiProcessImage({
     required List<int> bytes,
     String? filename,
     required ProcessOptionsDto options,
   });
 
-  Future<ProcessResultDto> crateApiImageApiProcessImageFile({
+  ProcessResultDto crateApiImageApiProcessImageFile({
     required String path,
     required ProcessOptionsDto options,
   });
 
-  Future<List<BackgroundChoiceDto>> crateApiImageApiStandardBackgrounds();
+  List<BackgroundChoiceDto> crateApiImageApiStandardBackgrounds();
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -129,18 +124,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
-  Future<U8Array3> crateApiDtoColorDtoToRgb({required ColorDto that}) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
+  U8Array3 crateApiDtoColorDtoToRgb({required ColorDto that}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_box_autoadd_color_dto(that, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 1,
-            port: port_,
-          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_u_8_array_3,
@@ -157,17 +147,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "color_dto_to_rgb", argNames: ["that"]);
 
   @override
-  Future<String> crateApiImageApiCoreVersion() {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
+  String crateApiImageApiCoreVersion() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 2,
-            port: port_,
-          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -184,17 +169,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "core_version", argNames: []);
 
   @override
-  Future<void> crateApiInitApp() {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
+  void crateApiInitApp() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 3,
-            port: port_,
-          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -211,17 +191,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "init_app", argNames: []);
 
   @override
-  Future<List<PresetDto>> crateApiImageApiListPresets() {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
+  List<PresetDto> crateApiImageApiListPresets() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 4,
-            port: port_,
-          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_preset_dto,
@@ -238,26 +213,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "list_presets", argNames: []);
 
   @override
-  Future<Uint8List> crateApiImageApiMakePreview({
+  Uint8List crateApiImageApiMakePreview({
     required List<int> bytes,
     String? filename,
     required ProcessOptionsDto options,
     required int maxSide,
   }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_list_prim_u_8_loose(bytes, serializer);
           sse_encode_opt_String(filename, serializer);
           sse_encode_box_autoadd_process_options_dto(options, serializer);
           sse_encode_u_32(maxSide, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 5,
-            port: port_,
-          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -277,22 +247,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<ImageInfoDto> crateApiImageApiProbeImage({
+  ImageInfoDto crateApiImageApiProbeImage({
     required List<int> bytes,
     String? filename,
   }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_list_prim_u_8_loose(bytes, serializer);
           sse_encode_opt_String(filename, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 6,
-            port: port_,
-          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_image_info_dto,
@@ -311,64 +276,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
-  Stream<BatchProgressDto> crateApiImageApiProcessBatch({
-    required List<BatchItemDto> items,
-    required ProcessOptionsDto options,
-  }) {
-    final sink = RustStreamSink<BatchProgressDto>();
-    unawaited(
-      handler.executeNormal(
-        NormalTask(
-          callFfi: (port_) {
-            final serializer = SseSerializer(generalizedFrbRustBinding);
-            sse_encode_list_batch_item_dto(items, serializer);
-            sse_encode_box_autoadd_process_options_dto(options, serializer);
-            sse_encode_StreamSink_batch_progress_dto_Sse(sink, serializer);
-            pdeCallFfi(
-              generalizedFrbRustBinding,
-              serializer,
-              funcId: 7,
-              port: port_,
-            );
-          },
-          codec: SseCodec(
-            decodeSuccessData: sse_decode_unit,
-            decodeErrorData: null,
-          ),
-          constMeta: kCrateApiImageApiProcessBatchConstMeta,
-          argValues: [items, options, sink],
-          apiImpl: this,
-        ),
-      ),
-    );
-    return sink.stream;
-  }
-
-  TaskConstMeta get kCrateApiImageApiProcessBatchConstMeta =>
-      const TaskConstMeta(
-        debugName: "process_batch",
-        argNames: ["items", "options", "sink"],
-      );
-
-  @override
-  Future<ProcessResultDto> crateApiImageApiProcessImage({
+  ProcessResultDto crateApiImageApiProcessImage({
     required List<int> bytes,
     String? filename,
     required ProcessOptionsDto options,
   }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_list_prim_u_8_loose(bytes, serializer);
           sse_encode_opt_String(filename, serializer);
           sse_encode_box_autoadd_process_options_dto(options, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 8,
-            port: port_,
-          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_process_result_dto,
@@ -388,22 +308,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<ProcessResultDto> crateApiImageApiProcessImageFile({
+  ProcessResultDto crateApiImageApiProcessImageFile({
     required String path,
     required ProcessOptionsDto options,
   }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(path, serializer);
           sse_encode_box_autoadd_process_options_dto(options, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 9,
-            port: port_,
-          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_process_result_dto,
@@ -423,17 +338,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<List<BackgroundChoiceDto>> crateApiImageApiStandardBackgrounds() {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
+  List<BackgroundChoiceDto> crateApiImageApiStandardBackgrounds() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 10,
-            port: port_,
-          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_background_choice_dto,
@@ -448,20 +358,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiImageApiStandardBackgroundsConstMeta =>
       const TaskConstMeta(debugName: "standard_backgrounds", argNames: []);
-
-  @protected
-  AnyhowException dco_decode_AnyhowException(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return AnyhowException(raw as String);
-  }
-
-  @protected
-  RustStreamSink<BatchProgressDto> dco_decode_StreamSink_batch_progress_dto_Sse(
-    dynamic raw,
-  ) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    throw UnimplementedError();
-  }
 
   @protected
   String dco_decode_String(dynamic raw) {
@@ -494,37 +390,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       decontaminate: dco_decode_opt_box_autoadd_bool(arr[3]),
       edgeOffset: dco_decode_opt_box_autoadd_f_32(arr[4]),
       smoothAlpha: dco_decode_opt_box_autoadd_bool(arr[5]),
-    );
-  }
-
-  @protected
-  BatchItemDto dco_decode_batch_item_dto(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 3)
-      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
-    return BatchItemDto(
-      id: dco_decode_String(arr[0]),
-      bytes: dco_decode_list_prim_u_8_strict(arr[1]),
-      filename: dco_decode_opt_String(arr[2]),
-    );
-  }
-
-  @protected
-  BatchProgressDto dco_decode_batch_progress_dto(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 8)
-      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
-    return BatchProgressDto(
-      index: dco_decode_u_32(arr[0]),
-      id: dco_decode_String(arr[1]),
-      done: dco_decode_u_32(arr[2]),
-      total: dco_decode_u_32(arr[3]),
-      succeeded: dco_decode_u_32(arr[4]),
-      failed: dco_decode_u_32(arr[5]),
-      result: dco_decode_opt_box_autoadd_process_result_dto(arr[6]),
-      error: dco_decode_opt_String(arr[7]),
     );
   }
 
@@ -580,12 +445,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ProcessOptionsDto dco_decode_box_autoadd_process_options_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_process_options_dto(raw);
-  }
-
-  @protected
-  ProcessResultDto dco_decode_box_autoadd_process_result_dto(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return dco_decode_process_result_dto(raw);
   }
 
   @protected
@@ -698,12 +557,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  List<BatchItemDto> dco_decode_list_batch_item_dto(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return (raw as List<dynamic>).map(dco_decode_batch_item_dto).toList();
-  }
-
-  @protected
   List<ColorDto> dco_decode_list_color_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_color_dto).toList();
@@ -773,12 +626,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   double? dco_decode_opt_box_autoadd_f_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_f_32(raw);
-  }
-
-  @protected
-  ProcessResultDto? dco_decode_opt_box_autoadd_process_result_dto(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return raw == null ? null : dco_decode_box_autoadd_process_result_dto(raw);
   }
 
   @protected
@@ -910,21 +757,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var inner = sse_decode_String(deserializer);
-    return AnyhowException(inner);
-  }
-
-  @protected
-  RustStreamSink<BatchProgressDto> sse_decode_StreamSink_batch_progress_dto_Sse(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    throw UnimplementedError('Unreachable ()');
-  }
-
-  @protected
   String sse_decode_String(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_list_prim_u_8_strict(deserializer);
@@ -957,40 +789,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       decontaminate: var_decontaminate,
       edgeOffset: var_edgeOffset,
       smoothAlpha: var_smoothAlpha,
-    );
-  }
-
-  @protected
-  BatchItemDto sse_decode_batch_item_dto(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_id = sse_decode_String(deserializer);
-    var var_bytes = sse_decode_list_prim_u_8_strict(deserializer);
-    var var_filename = sse_decode_opt_String(deserializer);
-    return BatchItemDto(id: var_id, bytes: var_bytes, filename: var_filename);
-  }
-
-  @protected
-  BatchProgressDto sse_decode_batch_progress_dto(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_index = sse_decode_u_32(deserializer);
-    var var_id = sse_decode_String(deserializer);
-    var var_done = sse_decode_u_32(deserializer);
-    var var_total = sse_decode_u_32(deserializer);
-    var var_succeeded = sse_decode_u_32(deserializer);
-    var var_failed = sse_decode_u_32(deserializer);
-    var var_result = sse_decode_opt_box_autoadd_process_result_dto(
-      deserializer,
-    );
-    var var_error = sse_decode_opt_String(deserializer);
-    return BatchProgressDto(
-      index: var_index,
-      id: var_id,
-      done: var_done,
-      total: var_total,
-      succeeded: var_succeeded,
-      failed: var_failed,
-      result: var_result,
-      error: var_error,
     );
   }
 
@@ -1054,14 +852,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_process_options_dto(deserializer));
-  }
-
-  @protected
-  ProcessResultDto sse_decode_box_autoadd_process_result_dto(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return (sse_decode_process_result_dto(deserializer));
   }
 
   @protected
@@ -1196,20 +986,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  List<BatchItemDto> sse_decode_list_batch_item_dto(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    var len_ = sse_decode_i_32(deserializer);
-    var ans_ = <BatchItemDto>[];
-    for (var idx_ = 0; idx_ < len_; ++idx_) {
-      ans_.add(sse_decode_batch_item_dto(deserializer));
-    }
-    return ans_;
-  }
-
-  @protected
   List<ColorDto> sse_decode_list_color_dto(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -1336,19 +1112,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_f_32(deserializer));
-    } else {
-      return null;
-    }
-  }
-
-  @protected
-  ProcessResultDto? sse_decode_opt_box_autoadd_process_result_dto(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    if (sse_decode_bool(deserializer)) {
-      return (sse_decode_box_autoadd_process_result_dto(deserializer));
     } else {
       return null;
     }
@@ -1537,32 +1300,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_AnyhowException(
-    AnyhowException self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_String(self.message, serializer);
-  }
-
-  @protected
-  void sse_encode_StreamSink_batch_progress_dto_Sse(
-    RustStreamSink<BatchProgressDto> self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_String(
-      self.setupAndSerialize(
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_batch_progress_dto,
-          decodeErrorData: sse_decode_AnyhowException,
-        ),
-      ),
-      serializer,
-    );
-  }
-
-  @protected
   void sse_encode_String(String self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
@@ -1587,30 +1324,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_opt_box_autoadd_bool(self.decontaminate, serializer);
     sse_encode_opt_box_autoadd_f_32(self.edgeOffset, serializer);
     sse_encode_opt_box_autoadd_bool(self.smoothAlpha, serializer);
-  }
-
-  @protected
-  void sse_encode_batch_item_dto(BatchItemDto self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_String(self.id, serializer);
-    sse_encode_list_prim_u_8_strict(self.bytes, serializer);
-    sse_encode_opt_String(self.filename, serializer);
-  }
-
-  @protected
-  void sse_encode_batch_progress_dto(
-    BatchProgressDto self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_u_32(self.index, serializer);
-    sse_encode_String(self.id, serializer);
-    sse_encode_u_32(self.done, serializer);
-    sse_encode_u_32(self.total, serializer);
-    sse_encode_u_32(self.succeeded, serializer);
-    sse_encode_u_32(self.failed, serializer);
-    sse_encode_opt_box_autoadd_process_result_dto(self.result, serializer);
-    sse_encode_opt_String(self.error, serializer);
   }
 
   @protected
@@ -1680,15 +1393,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_process_options_dto(self, serializer);
-  }
-
-  @protected
-  void sse_encode_box_autoadd_process_result_dto(
-    ProcessResultDto self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_process_result_dto(self, serializer);
   }
 
   @protected
@@ -1779,18 +1483,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_background_choice_dto(item, serializer);
-    }
-  }
-
-  @protected
-  void sse_encode_list_batch_item_dto(
-    List<BatchItemDto> self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_i_32(self.length, serializer);
-    for (final item in self) {
-      sse_encode_batch_item_dto(item, serializer);
     }
   }
 
@@ -1932,19 +1624,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_box_autoadd_f_32(self, serializer);
-    }
-  }
-
-  @protected
-  void sse_encode_opt_box_autoadd_process_result_dto(
-    ProcessResultDto? self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    sse_encode_bool(self != null, serializer);
-    if (self != null) {
-      sse_encode_box_autoadd_process_result_dto(self, serializer);
     }
   }
 

@@ -74,17 +74,14 @@ class AppState extends ChangeNotifier {
 
   Timer? _previewDebounce;
 
-  /// 单项处理时使用的分块体积上限。
-  ///
-  /// 界面持有的是全部输入字节，若一次性交给内核，Rust 侧还会再复制一份，
-  /// 峰值内存约为输入总量的两倍。分批提交可把额外占用限制在单批之内。
-  static const int _chunkBytes = 192 * 1024 * 1024;
-
   /// 初始化：加载内核侧提供的预设与底色。
-  Future<void> init() async {
+  ///
+  /// 内核接口是同步的，因此本方法也同步执行——预设列表规模很小，
+  /// 不会造成可感知的卡顿。
+  void init() {
     try {
-      presets = await listPresets();
-      backgrounds = await standardBackgrounds();
+      presets = listPresets();
+      backgrounds = standardBackgrounds();
       statusText = '已就绪';
     } catch (e) {
       lastError = '内核初始化失败：$e';
@@ -113,9 +110,11 @@ class AppState extends ChangeNotifier {
           sourcePath: isWebPlatform ? null : f.path,
         );
         // 探测失败不阻断导入，仅让该项缺少尺寸信息，
-        // 真正的失败会在处理阶段以明确文案抛出
+        // 真正的失败会在处理阶段以明确文案抛出。
+        // 注意：内核接口是同步的（为兼容非 HTTPS 部署而关闭了 FRB 异步），
+        // 因此这里不写 await。
         try {
-          job.info = await probeImage(bytes: bytes, filename: f.name);
+          job.info = probeImage(bytes: bytes, filename: f.name);
         } catch (_) {
           job.info = null;
         }
@@ -140,7 +139,8 @@ class AppState extends ChangeNotifier {
       sourcePath: path,
     );
     try {
-      job.info = await probeImage(bytes: bytes, filename: name);
+      // 内核接口为同步调用，无需 await
+      job.info = probeImage(bytes: bytes, filename: name);
     } catch (_) {
       job.info = null;
     }
@@ -226,7 +226,10 @@ class AppState extends ChangeNotifier {
   }
 
   /// 为选中项生成预览图。
-  Future<void> refreshPreview() async {
+  ///
+  /// 内核调用是同步的，因此本方法也同步执行。预览图很小（长边 900px），
+  /// 单次耗时通常在几十毫秒量级，可以直接在事件回调里完成。
+  void refreshPreview() {
     final job = selectedJob;
     if (job == null) return;
     if (!settings.isEffective) {
@@ -239,15 +242,12 @@ class AppState extends ChangeNotifier {
     job.previewLoading = true;
     notifyListeners();
     try {
-      final bytes = await makePreview(
+      job.previewBytes = makePreview(
         bytes: job.bytes,
         filename: job.name,
         options: settings.toDto(),
         maxSide: 900,
       );
-      // 预览期间用户可能已切换选中项或改了参数，此时丢弃过期结果
-      if (selectedJob?.id != job.id) return;
-      job.previewBytes = bytes;
     } catch (e) {
       job.previewBytes = null;
       lastError = '预览失败：$e';
@@ -261,8 +261,12 @@ class AppState extends ChangeNotifier {
 
   /// 处理全部待处理项。
   ///
-  /// 采用「分块 + 块内并行」：每块体积受限以约束内存峰值，
-  /// 块内交给内核用多线程并行处理以发挥 Rust 的性能优势。
+  /// 内核接口是同步的（为兼容非 HTTPS 部署而关闭了 FRB 异步），
+  /// 因此这里逐张串行调用。**每张之间必须让出事件循环**——
+  /// 同步调用会占用主线程，不让出的话整个批次期间界面完全无法重绘，
+  /// 用户会以为程序卡死。
+  ///
+  /// 每张独立捕获异常：单张失败不影响其余项，与前一批量实现语义一致。
   Future<void> processAll() async {
     if (processing || jobs.isEmpty) return;
     if (!settings.isEffective) {
@@ -282,37 +286,34 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     var finished = 0;
+    var ok = 0;
+    var failed = 0;
     final options = settings.toDto();
 
     try {
-      for (final chunk in _splitBySize(targets)) {
-        // 把一批文件交给内核并行处理，进度事件通过 id 映射回对应列表项
-        final items = chunk
-            .map((j) => BatchItemDto(id: j.id, bytes: j.bytes, filename: j.name))
-            .toList();
-
-        await for (final p in processBatch(items: items, options: options)) {
-          final job = jobs.firstWhere(
-            (j) => j.id == p.id,
-            orElse: () => chunk.first,
+      for (final job in targets) {
+        try {
+          final r = processImage(
+            bytes: job.bytes,
+            filename: job.name,
+            options: options,
           );
-          if (p.result != null) {
-            final r = p.result!;
-            job.outputBytes = r.bytes;
-            job.outputName = _outputNameFor(job, r);
-            job.result = r;
-            job.status = JobStatus.done;
-          } else {
-            job.error = p.error ?? '处理失败';
-            job.status = JobStatus.failed;
-          }
-          finished++;
-          progress = finished / targets.length;
-          notifyListeners();
+          job.outputBytes = r.bytes;
+          job.outputName = _outputNameFor(job, r);
+          job.result = r;
+          job.status = JobStatus.done;
+          ok++;
+        } catch (e) {
+          job.error = '$e';
+          job.status = JobStatus.failed;
+          failed++;
         }
+        finished++;
+        progress = finished / targets.length;
+        notifyListeners();
+        // 让出事件循环，使进度条与列表状态能真正刷新出来
+        await Future.delayed(Duration.zero);
       }
-      final ok = completedJobs.length;
-      final failed = targets.where((j) => j.status == JobStatus.failed).length;
       statusText = failed == 0
           ? '处理完成，共 $ok 张'
           : '处理完成：成功 $ok 张，失败 $failed 张';
@@ -328,26 +329,6 @@ class AppState extends ChangeNotifier {
       processing = false;
       notifyListeners();
     }
-  }
-
-  /// 按累计体积把任务切成多块。
-  ///
-  /// 单张就超过上限时仍会独占一块——不能为了避免超限而丢弃任务。
-  List<List<ImageJob>> _splitBySize(List<ImageJob> source) {
-    final chunks = <List<ImageJob>>[];
-    var current = <ImageJob>[];
-    var size = 0;
-    for (final j in source) {
-      if (current.isNotEmpty && size + j.bytes.length > _chunkBytes) {
-        chunks.add(current);
-        current = [];
-        size = 0;
-      }
-      current.add(j);
-      size += j.bytes.length;
-    }
-    if (current.isNotEmpty) chunks.add(current);
-    return chunks;
   }
 
   /// 计算输出文件名。

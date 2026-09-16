@@ -13,29 +13,27 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`
 
 /// 内核版本号。
-Future<String> coreVersion() =>
-    RustLib.instance.api.crateApiImageApiCoreVersion();
+String coreVersion() => RustLib.instance.api.crateApiImageApiCoreVersion();
 
 /// 列出全部证件照规格预设。
-Future<List<PresetDto>> listPresets() =>
+List<PresetDto> listPresets() =>
     RustLib.instance.api.crateApiImageApiListPresets();
 
 /// 常用底色的标准色值，供界面直接使用，避免前端重复硬编码色号。
-Future<List<BackgroundChoiceDto>> standardBackgrounds() =>
+List<BackgroundChoiceDto> standardBackgrounds() =>
     RustLib.instance.api.crateApiImageApiStandardBackgrounds();
 
 /// 探测图片基础信息。
 ///
 /// 只读取必要信息（尺寸、格式、GIF 帧数），不做完整像素解码，
 /// 因此对超大图也能快速返回，适合在文件导入后立即展示。
-Future<ImageInfoDto> probeImage({required List<int> bytes, String? filename}) =>
-    RustLib.instance.api.crateApiImageApiProbeImage(
-      bytes: bytes,
-      filename: filename,
-    );
+ImageInfoDto probeImage({required List<int> bytes, String? filename}) => RustLib
+    .instance
+    .api
+    .crateApiImageApiProbeImage(bytes: bytes, filename: filename);
 
 /// 处理单张图片（字节输入，三端通用）。
-Future<ProcessResultDto> processImage({
+ProcessResultDto processImage({
   required List<int> bytes,
   String? filename,
   required ProcessOptionsDto options,
@@ -46,7 +44,7 @@ Future<ProcessResultDto> processImage({
 );
 
 /// 处理单张图片（路径输入，仅原生端可用，可省去 Dart 侧读取与拷贝）。
-Future<ProcessResultDto> processImageFile({
+ProcessResultDto processImageFile({
   required String path,
   required ProcessOptionsDto options,
 }) => RustLib.instance.api.crateApiImageApiProcessImageFile(
@@ -61,7 +59,7 @@ Future<ProcessResultDto> processImageFile({
 /// 而不是另做一套近似渲染导致预览与成品不一致。
 ///
 /// `max_side` 建议取 600~1200：过小看不清换背景边缘，过大则失去快速预览的意义。
-Future<Uint8List> makePreview({
+Uint8List makePreview({
   required List<int> bytes,
   String? filename,
   required ProcessOptionsDto options,
@@ -71,17 +69,4 @@ Future<Uint8List> makePreview({
   filename: filename,
   options: options,
   maxSide: maxSide,
-);
-
-/// 批量处理，逐个回报进度。
-///
-/// 原生端使用 rayon 并行处理（进度通过通道汇总到单线程再推给 Dart，
-/// 避免多线程同时写 sink 造成顺序错乱）；WASM 端无 rayon，退化为串行。
-/// 每一项独立成败：单项失败不会中断整批，失败信息随该项的进度一起回报。
-Stream<BatchProgressDto> processBatch({
-  required List<BatchItemDto> items,
-  required ProcessOptionsDto options,
-}) => RustLib.instance.api.crateApiImageApiProcessBatch(
-  items: items,
-  options: options,
 );

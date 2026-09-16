@@ -174,33 +174,3 @@ pub struct PresetDto {
     /// 备注（用途与额外限制）
     pub note: String,
 }
-
-/// 批量处理输入项。
-#[derive(Debug, Clone)]
-pub struct BatchItemDto {
-    /// 调用方自定义的稳定标识，用于把进度回报对应回列表行
-    pub id: String,
-    pub bytes: Vec<u8>,
-    pub filename: Option<String>,
-}
-
-/// 批量处理进度回报。
-#[derive(Debug, Clone)]
-pub struct BatchProgressDto {
-    /// 该输入项在提交列表中的下标
-    pub index: u32,
-    /// 调用方标识，原样回传
-    pub id: String,
-    /// 累计完成数（含成功与失败）
-    pub done: u32,
-    /// 总任务数
-    pub total: u32,
-    /// 累计成功数
-    pub succeeded: u32,
-    /// 累计失败数
-    pub failed: u32,
-    /// 成功时的处理结果
-    pub result: Option<ProcessResultDto>,
-    /// 失败时的错误信息
-    pub error: Option<String>,
-}

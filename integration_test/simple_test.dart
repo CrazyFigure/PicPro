@@ -14,12 +14,12 @@ void main() {
   setUpAll(() async => RustLib.init());
 
   testWidgets('内核可调用并返回版本号', (tester) async {
-    final version = await coreVersion();
+    final version = coreVersion();
     expect(version.isNotEmpty, isTrue);
   });
 
   testWidgets('内核提供证件照规格预设', (tester) async {
-    final presets = await listPresets();
+    final presets = listPresets();
     // 一寸是最常用规格，必须存在且像素与权威规格一致
     final one = presets.firstWhere((p) => p.id == 'size_1cun');
     expect(one.widthPx, 295);
