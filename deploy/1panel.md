@@ -121,8 +121,11 @@ docker run -d --name picpro -p 8080:80 --restart unless-stopped picpro-web:lates
        add_header Cross-Origin-Opener-Policy "same-origin" always;
        add_header Cross-Origin-Embedder-Policy "require-corp" always;
 
-       # .wasm 必须返回正确 MIME，否则浏览器禁用流式编译、加载明显变慢
-       types { application/wasm wasm; }
+       # 不要在这里写 types 块来补 wasm 类型。
+       # nginx 的 types 在 server/location 层是「替换」而非「合并」http 层的类型表，
+       # 一旦写了（哪怕只为补一行 wasm），.html 等映射会全部丢失，
+       # 浏览器就会把 index.html 当二进制文件下载。nginx 自带的 mime.types
+       # 本就包含 application/wasm，无需另行声明。
 
        location = /index.html { expires -1; }         # 入口不缓存
        location ~* \.(?:js|wasm|css|png|svg|woff2?)$ { expires 30d; }
@@ -184,6 +187,24 @@ Cross-Origin-Embedder-Policy: require-corp
 ```
 
 用官方镜像（路线 A）不会出现该问题；自行配置 nginx 时请对照 `deploy/nginx.conf`。
+
+**打开网址后浏览器直接下载了一个文件，而不是显示页面**
+
+这是 MIME 类型丢失导致的：`index.html` 没有被识别为 `text/html`，
+浏览器就把它当二进制文件下载了。
+
+最常见的原因是 nginx 配置里在 server 或 location 层写了 `types` 块
+（常见于想补 `application/wasm wasm`）。nginx 的 `types` 在这些层级是
+**替换**而非合并 http 层的类型表，一写就会把 `.html` 等映射全部覆盖掉，
+随后回落到 `default_type`（官方 nginx 镜像设为 `application/octet-stream`）。
+
+解决：删掉那个 `types` 块即可。nginx 自带的 `mime.types` 本来就包含
+`application/wasm`，不需要手动声明。可以用下面的命令确认当前返回的类型：
+
+```bash
+curl -sI http://<你的地址>/ | grep -i content-type
+# 正常应为 text/html
+```
 
 **页面刷新后 404**
 
