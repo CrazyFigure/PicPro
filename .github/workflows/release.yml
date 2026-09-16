@@ -316,10 +316,12 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows release
-        # cargokit 会在此步骤内自动编译 Rust 内核为 Windows 动态库
+        # cargokit 会在此步骤内自动编译 Rust 内核为 Windows 动态库。
+        # 注意本步骤在 Windows 上默认由 PowerShell 执行，环境变量必须写 $env:NAME，
+        # 写成 $NAME 会被当成未定义变量展开为空值，导致 flutter 报参数缺失。
         run: >-
           flutter build windows --release --build-name "$env:VERSION"
-          --build-number "$GITHUB_RUN_NUMBER"
+          --build-number "$env:GITHUB_RUN_NUMBER"
 
       - name: Install NSIS
         run: choco install nsis -y
