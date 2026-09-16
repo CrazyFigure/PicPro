@@ -5,10 +5,18 @@
 
 # Flutter 与 Dart
 .dart_tool/
-build/
 .flutter-plugins
 .flutter-plugins-dependencies
 *.iml
+
+# 构建产物
+#
+# 注意：这里**不能**写成 `build/`。deploy/Dockerfile.runtime 需要把已构建好的
+# build/web 拷进镜像，而 Docker 不允许在父目录被整体排除后再重新包含其中的子文件
+# （会直接报 CopyIgnoredFile 错误）。因此改为用 `build/*` 排除 build 下的其余内容，
+# 再单独放行 build/web —— 此时 build 目录本身未被排除，放行才能生效。
+build/*
+!build/web
 
 # Rust 编译产物（最大的一块，务必排除）
 rust/target/

@@ -407,6 +407,20 @@ jobs:
           name: picpro-web-dist
           path: build/web
 
+      - name: Verify web dist
+        # 前置校验：产物没取到时立刻失败并说清原因，
+        # 否则会拖到 docker build 阶段才报一句难以定位的 COPY 失败
+        if: steps.creds.outputs.enabled == 'true'
+        run: |
+          set -e
+          if [ ! -f build/web/index.html ]; then
+            echo "::error::未取到 Web 产物（build/web/index.html 不存在），无法构建镜像"
+            exit 1
+          fi
+          echo "Web 产物就绪："
+          ls -1 build/web | head -15
+          du -sh build/web
+
       - name: Set up QEMU
         # arm64 镜像需要借助 QEMU 打包（仅复制静态文件，不涉及重编译，因此很快）
         if: steps.creds.outputs.enabled == 'true'
