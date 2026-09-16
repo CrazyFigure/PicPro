@@ -49,7 +49,13 @@
 
 ## 📦 构建
 
-打版本标签即自动构建三端产物：
+### 自动构建（推荐）
+
+| 触发方式 | 产出 |
+|---|---|
+| 推送 `v*` 标签 | Windows 安装包、Android APK、Web 产物（均发布到 Release）＋ 镜像打版本标签与 `latest` |
+| 推送到 `main` | 构建 Web 产物并推送 `edge` 镜像 |
+| 手动触发 | 同标签方式，但版本号为占位值，产物仅作工作流附件 |
 
 ```bash
 git tag v1.0.0
@@ -59,14 +65,19 @@ git push origin v1.0.0
 GitHub Actions 自动产出：
 
 - `PicPro-Setup-<版本>.exe`（Windows 安装包）
-- `PicPro-<版本>.apk`（Android，arm64）
+- `PicPro-<版本>.apk`（Android，arm64，**正式签名**并校验证书指纹）
 - `PicPro-Web.zip`（Web 静态产物，可直接用于 1Panel）
+- `crazyfigure/picpro:<版本>`、`1.0`、`latest`（多架构镜像）
 
-> Android 需要配置 `ANDROID_KEYSTORE_BASE64` 等 Secrets 才会产出**正式签名**的 APK；
-> 未配置时构建不会失败，但产物只作为工作流附件保留、不上传到 Release，
+> Android 需要仓库 Secrets 中的签名凭据才会产出正式签名包。
+> 未配置时构建不会失败，但产物只作工作流附件保留、不上传到 Release，
 > 以免测试签名的包被误用于分发（debug 签名的包无法被正式包覆盖安装）。
+> 当前仓库已完成该配置，细节见 [`android/SIGNING.md`](android/SIGNING.md)。
 
-本地构建：
+镜像推送需要 `DOCKERHUB_USERNAME` 与 `DOCKERHUB_TOKEN` 两个 Secrets；
+未配置时会跳过镜像环节，不影响其它产物发布。
+
+### 本地构建
 
 ```bash
 flutter pub get
@@ -104,9 +115,41 @@ cargo run --release --example cli -- in.jpg out.jpg --preset size_1cun --bg 255,
 Web 版的全部处理都在浏览器内完成，服务器只托管静态文件，用户的图片不会离开设备。
 详见 [`deploy/1panel.md`](deploy/1panel.md)，提供静态网站与 Docker 容器两种路线。
 
+### 直接用镜像仓库的镜像
+
+推版本标签会**自动构建并推送**镜像到 Docker Hub，无需自己编译：
+
+```bash
+# 最新正式版
+docker pull crazyfigure/picpro:latest
+
+# 固定版本（推荐用于生产）
+docker pull crazyfigure/picpro:1.0.0
+
+# main 分支的最新构建
+docker pull crazyfigure/picpro:edge
+```
+
+镜像同时提供 `linux/amd64` 与 `linux/arm64`，两者内容一致。
+
+运行：
+
+```bash
+docker run -d --name picpro -p 8080:80 --restart unless-stopped crazyfigure/picpro:latest
+```
+
+### 从源码构建
+
 ```bash
 docker compose -f deploy/docker-compose.yml up -d --build
 ```
+
+首次构建需下载 Flutter 镜像并编译 Rust/Flutter，耗时较长（10~25 分钟）；
+直接拉取上面的官方镜像可以跳过这一步。
+
+> 部署时必须保留 `deploy/nginx.conf` 中的 `Cross-Origin-Opener-Policy` 与
+> `Cross-Origin-Embedder-Policy` 响应头——Rust 内核是多线程 WASM，
+> 依赖 `SharedArrayBuffer`，缺少这两个头页面会直接无法加载。
 
 ## 🛠 技术栈
 

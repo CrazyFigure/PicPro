@@ -1,0 +1,22 @@
+# 运行阶段镜像：只把已构建好的 Web 产物塞进 nginx。
+#
+# 为什么单独一个文件：
+# Web 产物是**架构无关**的静态文件，而完整构建（编译 Rust/Flutter）必须在具体架构上进行。
+# 若直接用 deploy/Dockerfile 做多架构构建，amd64 与 arm64 会各编译一遍 Rust 与 Flutter，
+# 在 QEMU 模拟下耗时极长且容易超时。
+# 因此 CI 的做法是：先用 deploy/Dockerfile 的构建逻辑产出一次静态文件，
+# 再用本文件把它们打进 amd64 与 arm64 两个镜像——无需重复编译。
+#
+# 日常使用（1Panel 编排、docker compose up --build）请用 deploy/Dockerfile，
+# 它会从源码完整构建，无需预先准备产物。
+
+FROM nginx:1.27-alpine
+
+# 构建上下文应为仓库根目录下已构建好的 build/web（CI 通过 artifact 恢复）
+COPY build/web /usr/share/nginx/html
+COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1/ || exit 1

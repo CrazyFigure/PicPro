@@ -1,21 +1,32 @@
-# PicPro 三端发布构建
+# PicPro 三端发布构建 + 镜像自动推送
 #
-# 触发：推送 v* 版本标签时，构建 Windows 安装包、Android APK 与 Web 静态产物。
+# 触发方式：
+#   - 推送 v* 版本标签：构建 Windows 安装包、Android APK、Web 产物并发布到 Release，
+#     同时推送带版本号的镜像（1.0.0 / 1.0 / latest）
+#   - 推送到 main 分支：只构建 Web 产物并推送 edge 镜像（用于快速验证与尝鲜部署）
+#   - 手动触发：与标签方式相同，但版本号为占位值，产物仅作工作流附件
 #
 # 三个平台共用同一份 Rust 内核：
-# - Windows / Android：cargokit 在 flutter build 时自动交叉编译为原生动态库；
-# - Web：先由 flutter_rust_bridge 编译为 WASM，再随 Flutter Web 产物一起发布。
+#   - Windows / Android：cargokit 在 flutter build 时自动交叉编译为原生动态库；
+#   - Web：先由 flutter_rust_bridge 编译为 WASM，再随 Flutter Web 产物一起发布，
+#     该产物同时被复用于构建 Docker 镜像。
 name: Release Build
 
 on:
   push:
     tags:
       - 'v*'
-  # 允许手动触发，便于不发版也能验证三端构建是否可用
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
   contents: write
+
+# 同一分支/标签上重复触发时取消旧运行，避免排队浪费
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # ============ 前置：内核与静态检查 ============
@@ -52,10 +63,81 @@ jobs:
           flutter pub get
           flutter analyze
 
+  # ============ Web 产物（镜像与 Release 共用） ============
+  web:
+    name: Build Web
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Setup Rust (nightly)
+        # Web 端必须使用 nightly：内核编译为多线程 WASM（依赖共享内存），
+        # 需要 `-Z build-std` 重建标准库，因此还要 rust-src 组件。
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: wasm32-unknown-unknown
+          components: rust-src
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-wasm-
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Install flutter_rust_bridge_codegen
+        run: cargo install flutter_rust_bridge_codegen --version 2.13.0 --locked
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Rust to WASM
+        run: flutter_rust_bridge_codegen build-web --release
+
+      - name: Build Flutter web
+        run: flutter build web --release
+
+      - name: Upload web dist
+        # 目录形式上传，供 docker 任务直接取用（无需解压）
+        uses: actions/upload-artifact@v4
+        with:
+          name: picpro-web-dist
+          path: build/web
+          retention-days: 7
+
+      - name: Zip web output
+        if: github.ref_type == 'tag'
+        run: |
+          cd build/web
+          zip -r ../../PicPro-Web.zip .
+          cd ../..
+
+      - name: Upload Web to Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: PicPro-Web.zip
+          fail_on_unmatched_files: false
+
   # ============ Android APK ============
   android:
     name: Build Android APK
     needs: verify
+    # 仅在发版或手动触发时构建：APK 构建耗时较长，日常 main 推送不必重复跑
+    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -78,6 +160,16 @@ jobs:
           # Rust 内核需要交叉编译到 Android 目标
           targets: aarch64-linux-android
 
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-android-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-android-
+
       - name: Setup Android NDK
         # cargokit 通过 ANDROID_NDK_HOME 定位 NDK 来完成 Rust 交叉编译
         run: |
@@ -96,7 +188,7 @@ jobs:
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             VERSION="${GITHUB_REF_NAME#v}"
           else
-            # 手动触发时用 0.0.0 占位，避免产出看起来像正式版本的文件名
+            # 手动触发时用占位版本号，避免产物看起来像正式版本
             VERSION="0.0.0-dev"
           fi
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
@@ -109,8 +201,8 @@ jobs:
         run: flutter pub get
 
       - name: Detect signing secrets
-        # 未配置密钥库时不静默回退到 debug 签名，而是明确降级为「仅供测试」的产物，
-        # 避免用户把测试包当成正式包分发（debug 签名的包无法被正式包覆盖安装）
+        # 未配置密钥库时不静默回退到 debug 签名后仍上传 Release——
+        # debug 签名的包无法被正式包覆盖安装，会被用户误当成正式包。
         id: signing
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -141,10 +233,31 @@ jobs:
           flutter build apk --release --target-platform android-arm64
           --build-name "$VERSION" --build-number "$GITHUB_RUN_NUMBER"
 
+      - name: Verify APK signature
+        # 硬校验产物证书指纹，杜绝静默回退到 debug 签名——
+        # 签名不一致的包无法覆盖安装，用户会一直卡在旧版本却看不出原因。
+        # 该指纹对应密钥库中的 picpro 别名；更换密钥库时必须同步更新此处。
+        if: steps.signing.outputs.enabled == 'true'
+        env:
+          EXPECTED_SHA256: '68:CE:CC:CE:B9:F6:C5:1E:31:BE:81:9B:DE:B7:CA:A7:0D:EB:05:43:7E:B9:CF:BD:AD:A2:A1:F6:78:6F:41:7F'
+        run: |
+          set -e
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -r | head -n1)"
+          echo "使用 apksigner: $APKSIGNER"
+          CERTS="$("$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-release.apk)"
+          echo "$CERTS"
+          # apksigner 输出的指纹为无分隔小写十六进制，需归一化后比较
+          EXPECTED_NORM="$(echo "$EXPECTED_SHA256" | tr -d ':' | tr 'A-Z' 'a-z')"
+          if echo "$CERTS" | tr -d ' ' | tr 'A-Z' 'a-z' | grep -q "sha-256digest:$EXPECTED_NORM"; then
+            echo "签名证书校验通过"
+          else
+            echo "::error::APK 签名证书与预期不符，可能回退到了 debug 签名，已中止发布"
+            exit 1
+          fi
+
       - name: Rename APK
         run: |
           cp build/app/outputs/flutter-apk/app-release.apk "PicPro-${VERSION}.apk"
-          echo "APK renamed"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -153,7 +266,7 @@ jobs:
           path: PicPro-*.apk
 
       - name: Upload APK to Release
-        # 仅在正式签名时上传到 Release，测试签名包只作为工作流产物保留
+        # 仅在正式签名且为版本标签时上传 Release
         if: steps.signing.outputs.enabled == 'true' && github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
@@ -164,6 +277,7 @@ jobs:
   windows:
     name: Build Windows EXE
     needs: verify
+    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -215,7 +329,6 @@ jobs:
         run: |
           set -e
           mkdir -p dist
-          echo "=== 探测 makensis ==="
           MAKENSIS="$(command -v makensis 2>/dev/null || true)"
           if [ -z "$MAKENSIS" ]; then
             for p in "/c/Program Files (x86)/NSIS/makensis.exe" \
@@ -253,58 +366,85 @@ jobs:
           files: dist/PicPro-Setup-*.exe
           fail_on_unmatched_files: false
 
-  # ============ Web（供 1Panel 等静态托管） ============
-  web:
-    name: Build Web
-    needs: verify
+  # ============ Docker 镜像推送到 Docker Hub ============
+  docker:
+    name: Push Docker Image
+    needs: web
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          cache: true
-
-      - name: Setup Rust (nightly)
-        # Web 端必须使用 nightly：内核编译为多线程 WASM（依赖共享内存），
-        # 需要 `-Z build-std` 重建标准库，因此还要 rust-src 组件。
-        uses: dtolnay/rust-toolchain@nightly
-        with:
-          targets: wasm32-unknown-unknown
-          components: rust-src
-
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-
-      - name: Install flutter_rust_bridge_codegen
-        run: cargo install flutter_rust_bridge_codegen --version 2.13.0 --locked
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Build Rust to WASM
-        run: flutter_rust_bridge_codegen build-web --release
-
-      - name: Build Flutter web
-        run: flutter build web --release
-
-      - name: Zip web output
+      - name: Check Docker Hub credentials
+        # 未配置凭据时跳过而非失败：这样即使还没建好仓库 Secret，
+        # 安装包与 Web 产物仍能正常发布，不因镜像环节阻塞整个发版
+        id: creds
+        env:
+          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          DH_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
-          cd build/web
-          zip -r ../../PicPro-Web.zip .
-          cd ../..
+          if [ -n "$DH_USER" ] && [ -n "$DH_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::未配置 DOCKERHUB_USERNAME / DOCKERHUB_TOKEN，已跳过镜像推送"
+          fi
 
-      - name: Upload Web artifact
-        uses: actions/upload-artifact@v4
+      - name: Download web dist
+        if: steps.creds.outputs.enabled == 'true'
+        uses: actions/download-artifact@v4
         with:
-          name: PicPro-Web
-          path: PicPro-Web.zip
+          name: picpro-web-dist
+          path: build/web
 
-      - name: Upload Web to Release
-        if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+      - name: Set up QEMU
+        # arm64 镜像需要借助 QEMU 打包（仅复制静态文件，不涉及重编译，因此很快）
+        if: steps.creds.outputs.enabled == 'true'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        if: steps.creds.outputs.enabled == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: steps.creds.outputs.enabled == 'true'
+        uses: docker/login-action@v3
         with:
-          files: PicPro-Web.zip
-          fail_on_unmatched_files: false
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute image tags
+        if: steps.creds.outputs.enabled == 'true'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/picpro
+          # 标签策略：
+          #   v1.2.3 标签 -> 1.2.3 / 1.2 / latest
+          #   main 分支   -> edge
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
+            type=raw,value=edge,enable=${{ github.ref_name == 'main' }}
+
+      - name: Build and push
+        if: steps.creds.outputs.enabled == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          # 只做「拷贝静态文件 + nginx」，因此可以轻松产出多架构镜像
+          file: deploy/Dockerfile.runtime
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        if: steps.creds.outputs.enabled == 'true'
+        run: |
+          echo "### 已推送镜像" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
