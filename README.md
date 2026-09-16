@@ -115,6 +115,15 @@ cargo run --release --example cli -- in.jpg out.jpg --preset size_1cun --bg 255,
 Web 版的全部处理都在浏览器内完成，服务器只托管静态文件，用户的图片不会离开设备。
 详见 [`deploy/1panel.md`](deploy/1panel.md)，提供「直接拉镜像 / 从源码构建 / 静态网站」三条路线。
 
+> **⚠️ 必须通过 HTTPS（或 localhost）访问。**
+> Rust 内核是多线程 WASM，依赖 `SharedArrayBuffer`；浏览器只在页面「跨源隔离」时
+> 才允许使用它，而跨源隔离由 `COOP` / `COEP` 响应头开启——但**在非安全来源上
+> 浏览器会直接忽略这两个头**。因此用 `http://<公网IP>:<端口>` 直连会得到空白页，
+> 控制台报 `SharedArrayBuffer transfer requires self.crossOriginIsolated`。
+> 正式部署请绑定域名并在 1Panel 申请证书；临时自测可用
+> `ssh -L 8111:127.0.0.1:8111 user@<服务器IP>` 后访问 `http://localhost:8111`。
+> 证书只需加在浏览器访问的那一层，容器内部保持 HTTP 即可。
+
 ### 直接用镜像仓库的镜像（推荐）
 
 推版本标签会**自动构建并推送**镜像到 Docker Hub，无需自己编译：

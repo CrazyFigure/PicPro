@@ -3,6 +3,52 @@
 Web 版的全部图像处理都在**浏览器内**完成，服务器只负责托管静态文件。
 这意味着：容器几乎不消耗 CPU 与内存，用户的图片也不会离开自己的设备。
 
+---
+
+## ⚠️ 前置要求：必须通过 HTTPS 访问（不可跳过）
+
+**用 `http://<公网IP>:<端口>` 直接访问是打不开的**，页面会是空白，
+控制台报 `SharedArrayBuffer transfer requires self.crossOriginIsolated`。
+
+原因是浏览器的安全上下文规则：
+
+1. Rust 内核编译为**多线程 WASM**，依赖 `SharedArrayBuffer` 作为共享内存；
+2. 浏览器只在页面「跨源隔离」时才允许使用它，而跨源隔离由 `COOP` / `COEP` 响应头开启；
+3. 但**在非安全来源上浏览器会直接忽略这两个响应头**——只有
+   `https://` 或 `localhost` 才被视为安全来源。纯 HTTP 的公网 IP 不在其列。
+
+因此部署时必须满足以下任一条件：
+
+| 方式 | 说明 | 适用 |
+|---|---|---|
+| **HTTPS** | 绑定域名并在 1Panel 申请证书（推荐） | 正式对外提供服务 |
+| **localhost** | 通过 SSH 隧道把端口转到本机 | 临时自测，见下方「临时自测办法」 |
+
+> 证书只需加在**浏览器访问的那一层**。用反向代理终止 TLS 后，
+> 容器内部继续用 HTTP 即可，无需在容器里配证书。
+
+### 临时自测办法（未配域名时）
+
+在本机执行 SSH 端口转发，把服务器的端口映射到本地：
+
+```bash
+ssh -L 8111:127.0.0.1:8111 <用户名>@43.133.76.254
+```
+
+然后浏览器访问 `http://localhost:8111`。
+`localhost` 属于安全来源，跨源隔离能正常生效，功能即可完整验证。
+
+### 正式部署：绑定域名并启用 HTTPS
+
+1. 把域名解析到服务器 IP。
+2. 在 1Panel 中为容器创建**反向代理**站点，目标填 `http://127.0.0.1:8080`。
+3. 在该站点申请 Let's Encrypt 证书，并开启**强制 HTTPS**。
+4. 用 `https://你的域名` 访问。
+
+> 若在反向代理层额外添加了 `add_header`，请确认没有覆盖掉 `COOP` 与 `COEP`。
+
+---
+
 三条路线任选其一：
 
 | 路线 | 适用场景 | 需要构建 | 耗时 |
@@ -176,17 +222,29 @@ docker run -d --name picpro -p 8080:80 --restart unless-stopped picpro-web:lates
 
 ## 常见问题
 
-**页面空白，控制台报 `SharedArrayBuffer is not defined`**
+**页面空白，控制台报 `SharedArrayBuffer` / `crossOriginIsolated` 相关错误**
 
-这是最常见的部署问题：服务器没有发送跨源隔离响应头。
-确认响应头中包含：
+按以下顺序排查，**第一种情况最常见**：
 
-```
-Cross-Origin-Opener-Policy: same-origin
-Cross-Origin-Embedder-Policy: require-corp
-```
+1. **用的是 HTTP 而非 HTTPS**（公网 IP + 端口直连）。
+   此时浏览器会直接忽略 `COOP` / `COEP`，控制台会有类似提示：
+   *"The Cross-Origin-Opener-Policy header has been ignored, because the URL's
+   origin was untrustworthy... Please deliver the response using the HTTPS protocol."*
+   → 必须改用域名 + HTTPS，或临时用 `http://localhost` 访问（见开头「前置要求」）。
 
-用官方镜像（路线 A）不会出现该问题；自行配置 nginx 时请对照 `deploy/nginx.conf`。
+2. **服务器没有发送跨源隔离响应头**（HTTPS 下仍失败时检查）。
+   确认响应头包含：
+   ```
+   Cross-Origin-Opener-Policy: same-origin
+   Cross-Origin-Embedder-Policy: require-corp
+   ```
+   用官方镜像不会漏配；自行配置 nginx 时请对照 `deploy/nginx.conf`。
+
+**页面空白，控制台报 `Identifier 'wasm_bindgen' has already been declared`**
+
+`pkg/picpro_core.js` 被加载了两次。flutter_rust_bridge 会自行注入该脚本，
+因此 `web/index.html` 中**不应**再手动写 `<script src="pkg/picpro_core.js">`。
+若你改动过 `index.html`，请删掉那一行。
 
 **打开网址后浏览器直接下载了一个文件，而不是显示页面**
 

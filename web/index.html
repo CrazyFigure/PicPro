@@ -23,12 +23,13 @@
 </head>
 <body>
   <!--
-    Rust 内核的 WASM 加载器，必须在 flutter_bootstrap.js 之前同步加载：
-    它会在全局定义 wasm_bindgen，Dart 侧的 FFI 运行时初始化时即需要该符号。
-    因此不能加 async/defer，否则 RustLib.init() 会因找不到符号而失败。
+    注意：这里**不要**手动引入 pkg/picpro_core.js。
+    flutter_rust_bridge 的 initializeWasmModule 会自行向 <head> 注入该脚本
+    （路径由 rust_builder 配置中的 webPrefix "pkg/" + stem "picpro_core" 决定），
+    随后用 jsEval 把 wasm_bindgen 挂到 window 上，再加载 _bg.wasm。
+    若在此处再写一个 <script src="pkg/picpro_core.js">，脚本会被执行两次，
+    第二次因 `wasm_bindgen` 已声明而抛 SyntaxError，导致 Rust 内核无法初始化。
   -->
-  <script src="pkg/picpro_core.js"></script>
-
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
