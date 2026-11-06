@@ -34,13 +34,13 @@ jobs:
     name: Verify Core
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -69,7 +69,7 @@ jobs:
     needs: verify
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -86,7 +86,7 @@ jobs:
           components: rust-src
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -112,7 +112,7 @@ jobs:
 
       - name: Upload web dist
         # 目录形式上传，供 docker 任务直接取用（无需解压）
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: picpro-web-dist
           path: build/web
@@ -127,7 +127,7 @@ jobs:
 
       - name: Upload Web to Release
         if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           # 由 GitHub 依据提交记录自动生成发版说明，避免 Release 页面空无一物
           generate_release_notes: true
@@ -142,10 +142,10 @@ jobs:
     if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -163,7 +163,7 @@ jobs:
           targets: aarch64-linux-android
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -264,7 +264,7 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk "PicPro-${VERSION}.apk"
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: PicPro-Android
           path: PicPro-*.apk
@@ -272,7 +272,7 @@ jobs:
       - name: Upload APK to Release
         # 仅在正式签名且为版本标签时上传 Release
         if: steps.signing.outputs.enabled == 'true' && github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           # 由 GitHub 依据提交记录自动生成发版说明，避免 Release 页面空无一物
           generate_release_notes: true
@@ -286,7 +286,7 @@ jobs:
     if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -298,7 +298,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -369,14 +369,14 @@ jobs:
           ls -la dist/
 
       - name: Upload EXE artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: PicPro-Windows
           path: dist/PicPro-Setup-*.exe
 
       - name: Upload EXE to Release
         if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           # 由 GitHub 依据提交记录自动生成发版说明，避免 Release 页面空无一物
           generate_release_notes: true
@@ -389,7 +389,7 @@ jobs:
     needs: web
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Check Docker Hub credentials
         # 未配置凭据时跳过而非失败：这样即使还没建好仓库 Secret，
@@ -408,7 +408,7 @@ jobs:
 
       - name: Download web dist
         if: steps.creds.outputs.enabled == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: picpro-web-dist
           path: build/web
@@ -430,15 +430,15 @@ jobs:
       - name: Set up QEMU
         # arm64 镜像需要借助 QEMU 打包（仅复制静态文件，不涉及重编译，因此很快）
         if: steps.creds.outputs.enabled == 'true'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Buildx
         if: steps.creds.outputs.enabled == 'true'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to Docker Hub
         if: steps.creds.outputs.enabled == 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -446,7 +446,7 @@ jobs:
       - name: Compute image tags
         if: steps.creds.outputs.enabled == 'true'
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/picpro
           # 标签策略：
@@ -460,7 +460,7 @@ jobs:
 
       - name: Build and push
         if: steps.creds.outputs.enabled == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           # 只做「拷贝静态文件 + nginx」，因此可以轻松产出多架构镜像
